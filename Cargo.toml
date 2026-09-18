@@ -1,0 +1,19 @@
+[package]
+name = "adventure-tools"
+version = "0.1.0"
+authors = ["zuxa <zuxa@example.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { version = "0.7.10", features = ["router", "web"] }
+futures = "0.3"
+gloo-net = { version = "0.7", features = ["http"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
+js-sys = "0.3"
+rexie = "0.6"
+rmp-serde = "1.3.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+wasm-bindgen = "0.2"

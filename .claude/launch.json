@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "adventure-tools",
+      "runtimeExecutable": "dx",
+      "runtimeArgs": ["serve", "--platform", "web"],
+      "port": 8080
+    }
+  ]
+}

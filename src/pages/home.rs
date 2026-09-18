@@ -1,0 +1,97 @@
+//! The app's landing page: pinned entity cards when the
+//! search bar is empty, live search-result cards while it has text.
+
+use dioxus::prelude::*;
+
+use crate::card::{CardSize, EntityCard};
+use crate::data::{excluded_by_ruleset, Library};
+use crate::pins::PinsSignal;
+use crate::routes::EntityKind;
+use crate::search;
+use crate::state::LibrarySignal;
+use crate::viewport::Viewport;
+use crate::{SearchInput, SearchQuery, Use2024Rules};
+
+#[component]
+pub fn HomePage() -> Element {
+    // Whether to show the pinned grid vs. results reacts to the raw input
+    // instantly; the results themselves use the debounced query so a fast
+    // typist isn't re-searching the whole corpus on every keystroke (see
+    // `layout::SearchHeader`).
+    let search_input = use_context::<SearchInput>().0;
+    let search_query = use_context::<SearchQuery>().0;
+    let library = use_context::<LibrarySignal>();
+    let pins = use_context::<PinsSignal>();
+    let use_2024 = use_context::<Signal<Use2024Rules>>();
+    let viewport = use_context::<Signal<Viewport>>();
+    // The hits are recomputed only when the query, the ruleset or the
+    // library change, not on every render of this page.
+    let hits = use_memo(move || {
+        let Some(lib) = library.read().clone() else {
+            return Vec::new();
+        };
+        search::search(&lib, &search_query.read(), use_2024().0)
+            .into_iter()
+            .map(|hit| (hit.kind, hit.entity.source().to_string(), hit.entity.name().to_string()))
+            .collect::<Vec<_>>()
+    });
+    let Some(lib) = library.read().clone() else {
+        return rsx! {};
+    };
+
+    let typed = search_input.read().clone();
+    let q = search_query.read().clone();
+    rsx! {
+        div { class: "w-full",
+            if typed.trim().is_empty() {
+                {pinned_grid(&lib, pins, use_2024().0, viewport())}
+            } else {
+                {results_grid(&hits.read(), &q, viewport())}
+            }
+        }
+    }
+}
+
+fn pinned_grid(lib: &Library, pins: PinsSignal, use_2024: bool, viewport: Viewport) -> Element {
+    if pins.read().is_empty() {
+        return rsx! {
+            p { class: "mt-32 text-center text-gray-400",
+                "Search above, then pin entities with the 📍 button to keep them here."
+            }
+        };
+    }
+    // Only entities the library actually has (a pin can outlive a data
+    // update that renamed or dropped its entity) and that the current
+    // ruleset selection doesn't hide.
+    let known: Vec<_> = pins
+        .read()
+        .iter()
+        .filter_map(|id| lib.pinned(*id))
+        .filter(|(_, entity)| !excluded_by_ruleset(entity.source(), use_2024))
+        .map(|(kind, entity)| (kind, entity.source().to_string(), entity.name().to_string()))
+        .collect();
+    let size = CardSize::fitting(known.len(), viewport);
+    rsx! {
+        div { class: "flex flex-wrap justify-center gap-4",
+            for (kind , source , name) in known {
+                EntityCard { key: "{kind}|{source}|{name}", kind, source, name, size }
+            }
+        }
+    }
+}
+
+fn results_grid(hits: &[(EntityKind, String, String)], q: &str, viewport: Viewport) -> Element {
+    if hits.is_empty() {
+        return rsx! {
+            p { class: "mt-32 text-center text-gray-400", "No results for \"{q}\"." }
+        };
+    }
+    let size = CardSize::fitting(hits.len(), viewport);
+    rsx! {
+        div { class: "flex flex-wrap justify-center gap-4",
+            for (kind , source , name) in hits.iter().cloned() {
+                EntityCard { key: "{kind}|{source}|{name}", kind, source, name, size }
+            }
+        }
+    }
+}
