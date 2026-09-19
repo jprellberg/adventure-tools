@@ -39,6 +39,41 @@ pub fn kind_source_tags(kind: EntityKind, source: &str, lib: &Library) -> Elemen
     }
 }
 
+/// An entity's name as a link: a plain click maximizes the entity in the
+/// modal overlay, except for a book, whose link goes to the book's page.
+pub fn title_link(kind: EntityKind, source: &str, name: &str, ctx: RenderCtx) -> Element {
+    let class = "cursor-pointer hover:underline";
+    if kind == EntityKind::Books {
+        let to = Route::Book {
+            source: source.to_string(),
+            section: Vec::new(),
+        };
+        return rsx! {
+            Link { class, to, {crate::render::render_inline(name, ctx)} }
+        };
+    }
+    let target = EntityTarget {
+        kind,
+        source: source.to_string(),
+        name: name.to_string(),
+    };
+    let to = Route::EntityDetail {
+        kind,
+        source: target.source.clone(),
+        name: target.name.clone(),
+    };
+    let modal = ctx.modal;
+    rsx! {
+        Link {
+            class,
+            to,
+            onclick_only: true,
+            onclick: move |_| crate::modal_history::open_modal(modal, target.clone()),
+            {crate::render::render_inline(name, ctx)}
+        }
+    }
+}
+
 /// A grid card's size, as factors (height x width) of the base card.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CardSize {
@@ -126,37 +161,19 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     let Some(entity) = lib.find_ci(kind, Some(&source), &name) else {
         return rsx! {};
     };
-    let target = EntityTarget {
-        kind,
-        source: entity.source().to_string(),
-        name: entity.name().to_string(),
-    };
-    let permalink = Route::EntityDetail {
-        kind,
-        source: target.source.clone(),
-        name: target.name.clone(),
-    };
+    let (source, name) = (entity.source().to_string(), entity.name().to_string());
     let ctx = RenderCtx::new(&lib, modal, hover);
-    let pinned = is_pinned(pins, kind, &target.source, &target.name);
+    let pinned = is_pinned(pins, kind, &source, &name);
     let toggle = {
-        let target = target.clone();
-        move |_| toggle_pin(pins, kind, &target.source, &target.name)
+        let (source, name) = (source.clone(), name.clone());
+        move |_| toggle_pin(pins, kind, &source, &name)
     };
 
     rsx! {
         div { class: "flex items-center gap-2 py-0.5",
             div { class: "min-w-0 flex-1 text-base font-bold leading-tight",
-                Link {
-                    class: "cursor-pointer hover:underline",
-                    to: permalink,
-                    onclick_only: true,
-                    onclick: {
-                        let target = target.clone();
-                        move |_| crate::modal_history::open_modal(modal, target.clone())
-                    },
-                    {crate::render::render_inline(&target.name, ctx)}
-                }
-                {kind_source_tags(kind, &target.source, &lib)}
+                {title_link(kind, &source, &name, ctx)}
+                {kind_source_tags(kind, &source, &lib)}
             }
             button {
                 class: if pinned {

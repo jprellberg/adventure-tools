@@ -244,14 +244,26 @@ impl Library {
         name: &str,
         use_2024: bool,
     ) -> Option<EntityRef<'_>> {
-        let mut matches = self
-            .entities_of(kind)
-            .filter(|e| e.name().eq_ignore_ascii_case(name) && source.is_none_or(|s| e.source().eq_ignore_ascii_case(s)));
+        let mut matches = self.entities_of(kind).filter(|e| {
+            e.name().eq_ignore_ascii_case(name) && source.is_none_or(|s| e.source().eq_ignore_ascii_case(s))
+        });
         let first = matches.next()?;
         if source.is_some() || !excluded_by_ruleset(first.source(), use_2024) {
             return Some(first);
         }
-        Some(matches.find(|e| !excluded_by_ruleset(e.source(), use_2024)).unwrap_or(first))
+        Some(
+            matches
+                .find(|e| !excluded_by_ruleset(e.source(), use_2024))
+                .unwrap_or(first),
+        )
+    }
+
+    /// The book printed under `source`.
+    pub fn book(&self, source: &str) -> Option<&Other> {
+        self.other
+            .get(&EntityKind::Books)?
+            .iter()
+            .find(|b| b.source.eq_ignore_ascii_case(source))
     }
 
     /// The full title of a source code, where known - for the source tag's tooltip.
@@ -317,6 +329,18 @@ pub async fn load_library(mut progress: Signal<String>) -> Result<Library, Strin
         Some(library) => Ok(library),
         None => prepare_library(&sha, progress).await,
     }
+}
+
+/// The chapters of the book with the given `books.json` id, read from the
+/// cached files: a book's text is far larger than the rest of the library,
+/// so it is parsed only when its page is opened.
+pub async fn load_book(id: &str) -> Result<Vec<Value>, String> {
+    let path = format!("book/book-{}.json", id.to_lowercase());
+    let raw = db::get(db::STORE_FILES, &path)
+        .await?
+        .ok_or_else(|| format!("{path} missing from the local data cache"))?;
+    let mut file: Value = serde_json::from_str(&raw).map_err(|e| format!("parsing {path}: {e}"))?;
+    Ok(loader::take_array(&mut file, "data"))
 }
 
 /// Downloads what changed in the latest `data/` tree and prepares the

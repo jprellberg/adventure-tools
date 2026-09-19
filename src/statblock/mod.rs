@@ -18,7 +18,6 @@ use crate::data::EntityRef;
 use crate::render::{render_entries, render_inline, RenderCtx};
 use crate::routes::EntityKind;
 use crate::statblock::format::{i64_at, str_at};
-use crate::EntityTarget;
 
 pub use monster::render_monster_body;
 
@@ -56,26 +55,9 @@ pub fn subtitle(text: &str, ctx: RenderCtx) -> Element {
 /// `crate::card`), not repeated here. Clicking the name maximizes this
 /// entity in the modal overlay.
 pub fn render(entity: &EntityRef, kind: EntityKind, name: &str, ctx: RenderCtx) -> Element {
-    let modal = ctx.modal;
-    let target = EntityTarget {
-        kind,
-        source: entity.source().to_string(),
-        name: name.to_string(),
-    };
-    let permalink = crate::routes::Route::EntityDetail {
-        kind,
-        source: target.source.clone(),
-        name: target.name.clone(),
-    };
     let header = rsx! {
         h3 { class: "mb-1 text-base font-bold leading-tight",
-            Link {
-                class: "cursor-pointer hover:underline",
-                to: permalink,
-                onclick_only: true,
-                onclick: move |_| crate::modal_history::open_modal(modal, target.clone()),
-                {render_inline(name, ctx)}
-            }
+            {crate::card::title_link(kind, entity.source(), name, ctx)}
             {crate::card::kind_source_tags(kind, entity.source(), ctx.library)}
         }
     };

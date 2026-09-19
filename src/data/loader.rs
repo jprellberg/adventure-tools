@@ -55,7 +55,7 @@ impl DataSource for CacheSource {
 
 /// Takes the array at `file[key]` out of the file, or empty if the file or
 /// key is missing. Moving it out avoids copying every entity.
-fn take_array(file: &mut Value, key: &str) -> Vec<Value> {
+pub(super) fn take_array(file: &mut Value, key: &str) -> Vec<Value> {
     match file.get_mut(key).map(Value::take) {
         Some(Value::Array(items)) => items,
         _ => Vec::new(),
@@ -274,6 +274,7 @@ const OTHER_SOURCES: &[(EntityKind, &str, &[&str])] = &[
         &["legendaryGroup"],
     ),
     (EntityKind::CrochetPatterns, "homecrafts.json", &["crochetPattern"]),
+    (EntityKind::Books, "books.json", &["book"]),
 ];
 
 /// Reshapes the few kinds whose source data isn't already name/source/

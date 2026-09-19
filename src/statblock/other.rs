@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 use super::{class, divider, prop_line, subtitle};
 use crate::model::Other;
 use crate::render::{render_entries, render_values, RenderCtx};
-use crate::routes::EntityKind;
+use crate::routes::{EntityKind, Route};
 use crate::statblock::format::*;
 use crate::statblock::meta::{describe, prerequisite_text};
 
@@ -38,6 +38,7 @@ pub fn tag_for(kind: EntityKind) -> &'static str {
         EntityKind::LegendaryGroups => "legroup",
         EntityKind::CrochetPatterns => "crochet",
         EntityKind::Rules => "rule",
+        EntityKind::Books => "book",
         _ => "variantrule",
     }
 }
@@ -80,6 +81,16 @@ pub fn render(kind: EntityKind, o: &Other, header: Element, ctx: RenderCtx) -> E
             {render_values(&layout.lead, ctx)}
             {divider()}
             {render_entries(&o.entries, ctx)}
+            if kind == EntityKind::Books {
+                Link {
+                    class: "text-blue-700 underline decoration-dotted underline-offset-2 hover:decoration-solid",
+                    to: Route::Book {
+                        source: o.source.clone(),
+                        section: Vec::new(),
+                    },
+                    "Read the book →"
+                }
+            }
             for (title , entries) in layout.sections {
                 div { key: "{title}",
                     h4 { class: "mb-1 mt-2 border-b border-gray-300 text-sm font-bold", "{title}" }
@@ -303,9 +314,30 @@ fn layout_for(kind: EntityKind, o: &Other) -> Layout {
         }
         EntityKind::CrochetPatterns => crochet_layout(x, &mut l),
         EntityKind::Rules | EntityKind::Tables => l.subtitle = str_at(x, "path").unwrap_or_default().to_string(),
+        EntityKind::Books => {
+            l.subtitle = str_at(x, "group").map(book_group).unwrap_or_default().to_string();
+            l.line("Author:", str_at(x, "author").unwrap_or_default());
+            l.line("Published:", str_at(x, "published").unwrap_or_default());
+        }
         _ => {}
     }
     l
+}
+
+fn book_group(code: &str) -> &str {
+    match code {
+        "core" => "Core rulebook",
+        "screen" => "Screen",
+        "setting" => "Setting book",
+        "setting-alt" => "Setting book (alternative)",
+        "supplement" => "Supplement",
+        "supplement-alt" => "Supplement (alternative)",
+        "organized-play" => "Organized play",
+        "recipe" => "Recipe book",
+        "homecraft" => "Homecraft book",
+        "other" => "Other",
+        other => other,
+    }
 }
 
 fn rule_type(code: &str) -> &'static str {

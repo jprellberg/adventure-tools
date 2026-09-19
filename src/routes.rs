@@ -4,6 +4,7 @@ use std::str::FromStr;
 use dioxus::prelude::*;
 
 use crate::layout::RootLayout;
+use crate::pages::book::BookPage;
 use crate::pages::entity_detail::EntityDetailPage;
 use crate::pages::home::HomePage;
 
@@ -45,6 +46,7 @@ pub enum EntityKind {
     LegendaryGroups,
     CrochetPatterns,
     Rules,
+    Books,
 }
 
 /// Per-kind presentation: the route/persistence slug, the label shown in
@@ -62,7 +64,7 @@ const fn info(slug: &'static str, label: &'static str, badge: &'static str) -> K
     KindInfo { slug, label, badge }
 }
 
-const KINDS: [(EntityKind, KindInfo); 34] = [
+const KINDS: [(EntityKind, KindInfo); 35] = [
     (
         EntityKind::Bestiary,
         info("bestiary", "Bestiary", "bg-red-50 text-red-700"),
@@ -188,6 +190,7 @@ const KINDS: [(EntityKind, KindInfo); 34] = [
         EntityKind::Rules,
         info("rules", "Book Rules", "bg-emerald-100 text-emerald-800"),
     ),
+    (EntityKind::Books, info("books", "Books", "bg-lime-100 text-lime-800")),
 ];
 
 impl EntityKind {
@@ -266,6 +269,8 @@ pub enum Route {
         source: String,
         name: String,
     },
+    #[route("/books/:source/:..section")]
+    Book { source: String, section: Vec<String> },
     #[end_layout]
     #[route("/:..segments")]
     NotFound { segments: Vec<String> },
@@ -282,6 +287,13 @@ fn Home() -> Element {
 fn EntityDetail(kind: EntityKind, source: String, name: String) -> Element {
     rsx! {
         EntityDetailPage { kind, source, name }
+    }
+}
+
+#[component]
+fn Book(source: String, section: Vec<String>) -> Element {
+    rsx! {
+        BookPage { source, section }
     }
 }
 
