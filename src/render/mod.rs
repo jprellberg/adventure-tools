@@ -18,15 +18,15 @@ use crate::model::entry::{AttackBlock, EntriesBlock, ListBlock, TableBlock};
 use crate::model::Entry;
 use crate::routes::EntityKind;
 use crate::statblock::format::{ability_full, capitalize, join_conjunct, str_at, strings_at};
-use crate::{HoverSignal, ModalSignal, Use2024Rules};
+use crate::{HoverSignal, Use2024Rules};
 
 pub use inline::render_inline;
 
 /// Everything the shared renderers need to turn an `entries` tree into
 /// `Element`s: the library (for entity lookups), the identity of the
 /// entity whose card is currently being rendered (so a link back to that
-/// same entity can skip its own hover popup), the app-level modal/hover-popup signals entity
-/// links open, and the nesting depth of the entries being rendered.
+/// same entity can skip its own hover popup), the app-level hover-popup signal
+/// entity links set, and the nesting depth of the entries being rendered.
 /// Threaded explicitly through the render call graph, rather than pulled
 /// from context, since most of these are plain functions - not components -
 /// called a data-dependent number of times per render, which `use_context`
@@ -35,7 +35,6 @@ pub use inline::render_inline;
 pub struct RenderCtx<'a> {
     pub library: &'a Library,
     pub current: Option<(EntityKind, &'a str, &'a str)>,
-    pub modal: ModalSignal,
     pub hover: HoverSignal,
     pub depth: i32,
     /// The 2014/2024 toggle: which edition an unsourced link resolves to.
@@ -45,11 +44,10 @@ pub struct RenderCtx<'a> {
 impl<'a> RenderCtx<'a> {
     /// Reads the ruleset toggle from context, so a component building its
     /// context re-renders when the toggle flips.
-    pub fn new(library: &'a Library, modal: ModalSignal, hover: HoverSignal) -> Self {
+    pub fn new(library: &'a Library, hover: HoverSignal) -> Self {
         RenderCtx {
             library,
             current: None,
-            modal,
             hover,
             depth: 1,
             use_2024: consume_context::<Signal<Use2024Rules>>().read().0,

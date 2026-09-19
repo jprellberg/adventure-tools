@@ -1,58 +1,26 @@
-//! The app's landing page: pinned entity cards when the
-//! search bar is empty, live search-result cards while it has text.
+//! The grid views: the pinned entities and the search results, both as
+//! entity cards.
 
 use dioxus::prelude::*;
 
 use crate::card::{CardSize, EntityCard, EntityRow};
-use crate::data::Library;
 use crate::pins::PinsSignal;
 use crate::routes::EntityKind;
 use crate::search::{self, Filters};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
-use crate::{SearchInput, SearchQuery};
+use crate::SearchQuery;
 
+/// The pinned entities that the filters don't hide.
 #[component]
-pub fn HomePage() -> Element {
-    // Whether to show the pinned grid vs. results reacts to the raw input
-    // instantly; the results themselves use the debounced query so a fast
-    // typist isn't re-searching the whole corpus on every keystroke (see
-    // `layout::SearchHeader`).
-    let search_input = use_context::<SearchInput>().0;
-    let search_query = use_context::<SearchQuery>().0;
+pub fn PinnedPage() -> Element {
     let library = use_context::<LibrarySignal>();
     let pins = use_context::<PinsSignal>();
     let filters = use_context::<Signal<Filters>>();
     let viewport = use_context::<Signal<Viewport>>();
-    // The hits are recomputed only when the query, the filters
-    // or the library change, not on every render of this page.
-    let hits = use_memo(move || {
-        let Some(lib) = library.read().clone() else {
-            return Vec::new();
-        };
-        search::search(&lib, &search_query.read(), &filters.read())
-            .into_iter()
-            .map(|hit| (hit.kind, hit.entity.source().to_string(), hit.entity.name().to_string()))
-            .collect::<Vec<_>>()
-    });
     let Some(lib) = library.read().clone() else {
         return rsx! {};
     };
-
-    let typed = search_input.read().clone();
-    let q = search_query.read().clone();
-    rsx! {
-        div { class: "w-full",
-            if typed.trim().is_empty() {
-                {pinned_grid(&lib, pins, &filters.read(), viewport())}
-            } else {
-                {results_grid(&hits.read(), &q, viewport())}
-            }
-        }
-    }
-}
-
-fn pinned_grid(lib: &Library, pins: PinsSignal, filters: &Filters, viewport: Viewport) -> Element {
     if pins.read().is_empty() {
         return rsx! {
             p { class: "mt-32 text-center text-gray-400",
@@ -67,19 +35,54 @@ fn pinned_grid(lib: &Library, pins: PinsSignal, filters: &Filters, viewport: Vie
         .read()
         .iter()
         .filter_map(|id| lib.pinned(*id))
-        .filter(|(kind, entity)| filters.allows(*kind, entity.source()))
+        .filter(|(kind, entity)| filters.read().allows(*kind, entity.source()))
         .map(|(kind, entity)| (kind, entity.source().to_string(), entity.name().to_string()))
         .collect();
-    entities(&known, viewport)
+    rsx! {
+        div { class: "w-full", {entities(&known, viewport())} }
+    }
 }
 
-fn results_grid(hits: &[(EntityKind, String, String)], q: &str, viewport: Viewport) -> Element {
+/// The search results; with nothing typed, everything the filters let
+/// through, alphabetically.
+#[component]
+pub fn ResultsPage() -> Element {
+    // The results use the debounced query so a fast typist isn't re-searching
+    // the whole corpus on every keystroke (see `layout::SearchHeader`).
+    let search_query = use_context::<SearchQuery>().0;
+    let library = use_context::<LibrarySignal>();
+    let filters = use_context::<Signal<Filters>>();
+    let viewport = use_context::<Signal<Viewport>>();
+    // The hits are recomputed only when the query, the filters
+    // or the library change, not on every render of this page.
+    let hits = use_memo(move || {
+        let Some(lib) = library.read().clone() else {
+            return Vec::new();
+        };
+        search::search(&lib, &search_query.read(), &filters.read())
+            .into_iter()
+            .map(|hit| (hit.kind, hit.entity.source().to_string(), hit.entity.name().to_string()))
+            .collect::<Vec<_>>()
+    });
+    if library.read().is_none() {
+        return rsx! {};
+    }
+    let hits = hits.read();
     if hits.is_empty() {
+        let q = search_query.read();
         return rsx! {
-            p { class: "mt-32 text-center text-gray-400", "No results for \"{q}\"." }
+            p { class: "mt-32 text-center text-gray-400",
+                if q.trim().is_empty() {
+                    "Nothing matches the current filters."
+                } else {
+                    "No results for \"{q}\"."
+                }
+            }
         };
     }
-    entities(hits, viewport)
+    rsx! {
+        div { class: "w-full", {entities(&hits, viewport())} }
+    }
 }
 
 /// The given entities as a grid of cards, or - in single-column windows,

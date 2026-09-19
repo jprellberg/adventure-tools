@@ -20,7 +20,7 @@ use crate::routes::{EntityKind, Route};
 use crate::statblock::format::str_at;
 use crate::state::LibrarySignal;
 use crate::tags::strip_tags;
-use crate::{HoverSignal, ModalSignal};
+use crate::HoverSignal;
 
 /// A chapter or one of its sections, as listed in the table of contents.
 struct TocNode {
@@ -91,7 +91,6 @@ fn book_route(source: &str, path: &[usize]) -> Route {
 #[component]
 pub fn BookPage(source: String, section: Vec<String>) -> Element {
     let library = use_context::<LibrarySignal>();
-    let modal = use_context::<ModalSignal>();
     let hover = use_context::<HoverSignal>();
     let book_id = library
         .read()
@@ -126,7 +125,7 @@ pub fn BookPage(source: String, section: Vec<String>) -> Element {
         };
     };
     let title = book.name.clone();
-    let ctx = RenderCtx::new(&lib, modal, hover);
+    let ctx = RenderCtx::new(&lib, hover);
 
     let (contents, text) = match &*chapters.read() {
         None => (

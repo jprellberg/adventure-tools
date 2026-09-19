@@ -429,6 +429,9 @@
   .h-10 {
     height: calc(var(--spacing) * 10);
   }
+  .h-\[2\.125rem\] {
+    height: 2.125rem;
+  }
   .h-\[29rem\] {
     height: 29rem;
   }
@@ -594,6 +597,9 @@
       margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));
       margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));
     }
+  }
+  .overflow-hidden {
+    overflow: hidden;
   }
   .overflow-x-auto {
     overflow-x: auto;

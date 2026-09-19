@@ -52,8 +52,8 @@ pub fn subtitle(text: &str, ctx: RenderCtx) -> Element {
 /// name header so every kind renders it inside the same single box as the
 /// rest of its content rather than as a separate box
 /// above it. The source is shown as a tag on the card itself (see
-/// `crate::card`), not repeated here. Clicking the name maximizes this
-/// entity in the modal overlay.
+/// `crate::card`), not repeated here. Clicking the name opens this entity
+/// in the detail view.
 pub fn render(entity: &EntityRef, kind: EntityKind, name: &str, ctx: RenderCtx) -> Element {
     let header = rsx! {
         h3 { class: "mb-1 text-base font-bold leading-tight",

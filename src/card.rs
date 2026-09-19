@@ -1,19 +1,17 @@
 //! The entity card: a fixed-width, fixed-height (~3:4) rendering of one
 //! entity's statblock, with a pin toggle in the top-right corner (the
 //! statblock's title flows around it). Used for the pinned grid / search
-//! results, at full size for the `/entities/:kind/:source/:name` permalink
-//! page, and again (also at full size) inside the modal overlay a
-//! title/hyperlink click opens.
+//! results, and at full size in the detail view.
 
 use dioxus::prelude::*;
 
 use crate::data::{is_base_source, Library};
 use crate::pins::{is_pinned, toggle_pin, PinsSignal};
 use crate::render::RenderCtx;
-use crate::routes::{EntityKind, NameSegment, Route};
+use crate::routes::{EntityKind, Route, View};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
-use crate::{EntityTarget, HoverSignal, ModalSignal};
+use crate::{EntityTarget, HoverSignal};
 
 /// The colors of a source's tag.
 pub fn source_badge_classes(source: &str) -> &'static str {
@@ -44,38 +42,17 @@ pub fn kind_source_tags(kind: EntityKind, source: &str, lib: &Library) -> Elemen
     }
 }
 
-/// An entity's name as a link: a plain click maximizes the entity in the
-/// modal overlay, except for a book, whose link goes to the book's page.
+/// An entity's name as a link to the entity in the detail view (for a book,
+/// its page).
 pub fn title_link(kind: EntityKind, source: &str, name: &str, ctx: RenderCtx) -> Element {
-    let class = "cursor-pointer hover:underline";
-    if kind == EntityKind::Books {
-        let to = Route::Book {
-            source: source.to_string(),
-            section: Vec::new(),
-        };
-        return rsx! {
-            Link { class, to, {crate::render::render_inline(name, ctx)} }
-        };
-    }
     let target = EntityTarget {
         kind,
         source: source.to_string(),
         name: name.to_string(),
     };
-    let to = Route::EntityDetail {
-        kind,
-        source: target.source.clone(),
-        name: NameSegment(target.name.clone()),
-    };
-    let modal = ctx.modal;
+    let to = Route::of_view(View::Detail, Some(target));
     rsx! {
-        Link {
-            class,
-            to,
-            onclick_only: true,
-            onclick: move |_| crate::modal_history::open_modal(modal, target.clone()),
-            {crate::render::render_inline(name, ctx)}
-        }
+        Link { class: "cursor-pointer hover:underline", to, {crate::render::render_inline(name, ctx)} }
     }
 }
 
@@ -153,11 +130,10 @@ impl CardSize {
 /// pin toggle right-aligned - for
 /// single-column windows, where full cards would leave next to nothing of
 /// the result list visible (especially with the on-screen keyboard open).
-/// Clicking the title maximizes the entity like a card's title does.
+/// Clicking the title opens the entity like a card's title does.
 #[component]
 pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     let library = use_context::<LibrarySignal>();
-    let modal = use_context::<ModalSignal>();
     let hover = use_context::<HoverSignal>();
     let pins = use_context::<PinsSignal>();
     let Some(lib) = library.read().clone() else {
@@ -167,7 +143,7 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
         return rsx! {};
     };
     let (source, name) = (entity.source().to_string(), entity.name().to_string());
-    let ctx = RenderCtx::new(&lib, modal, hover);
+    let ctx = RenderCtx::new(&lib, hover);
     let pinned = is_pinned(pins, kind, &source, &name);
     let toggle = {
         let (source, name) = (source.clone(), name.clone());
@@ -204,7 +180,6 @@ pub fn EntityCard(
 ) -> Element {
     let library = use_context::<LibrarySignal>();
     let pins = use_context::<PinsSignal>();
-    let modal = use_context::<ModalSignal>();
     let hover = use_context::<HoverSignal>();
     // A card's body is only built once the card has scrolled into view: a
     // search shows up to 60 cards, but only the few on screen are worth
@@ -237,7 +212,7 @@ pub fn EntityCard(
         move |_| toggle_pin(pins, kind, &source, &name)
     };
 
-    let ctx = RenderCtx::new(&lib, modal, hover);
+    let ctx = RenderCtx::new(&lib, hover);
 
     rsx! {
         div {

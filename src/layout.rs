@@ -2,22 +2,51 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 
-use crate::card::{source_badge_classes, EntityCard};
-use crate::modal_history::{close_modal, listen_for_modal_navigation};
+use crate::card::source_badge_classes;
+use crate::data::Library;
 use crate::render::{render_entity_preview, RenderCtx};
-use crate::routes::{EntityKind, Route};
+use crate::routes::{EntityKind, Route, View};
 use crate::search::Filters;
 use crate::state::LibrarySignal;
-use crate::{HoverSignal, ModalSignal, ResyncRequest, SearchInput, SearchQuery, UpdateAvailable, Use2024Rules};
+use crate::{EntityTarget, HoverSignal, ResyncRequest, SearchInput, SearchQuery, UpdateAvailable, Use2024Rules};
 
 /// How long to wait after the last keystroke before re-running the search:
 /// long enough that fast typing doesn't re-filter the whole corpus on every
 /// character, short enough to still feel immediate.
 const SEARCH_DEBOUNCE_MS: u32 = 150;
 
+/// The states of the view toggle: the view, its glyph and its tooltip.
+const VIEW_TOGGLES: [(View, &str, &str); 3] = [
+    (View::Results, "≡", "Search results"),
+    (View::Pins, "📌", "Pinned entities"),
+    (View::Detail, "▢", "Entity detail"),
+];
+
+/// The classes of a view toggle segment that is selected or not.
+fn view_toggle_state(on: bool) -> &'static str {
+    if on {
+        "bg-gray-100 text-gray-900"
+    } else {
+        "bg-white text-gray-400 hover:text-gray-600"
+    }
+}
+
+/// The entity the detail view shows or - while another view is showing -
+/// keeps for the way back. A book's page counts as showing the book.
+fn current_detail(route: &Route, library: Option<&Library>) -> Option<EntityTarget> {
+    if let Route::Book { source, .. } = route {
+        let book = library?.book(source)?;
+        return Some(EntityTarget {
+            kind: EntityKind::Books,
+            source: book.source.clone(),
+            name: book.name.clone(),
+        });
+    }
+    route.detail().cloned()
+}
+
 #[component]
 pub fn RootLayout() -> Element {
-    listen_for_modal_navigation(use_context::<ModalSignal>());
     crate::viewport::provide_viewport();
     crate::pins::mirror_in_url(use_context::<crate::pins::PinsSignal>());
 
@@ -26,26 +55,39 @@ pub fn RootLayout() -> Element {
             SearchHeader {}
             main { class: "px-4 pb-4 pt-20", Outlet::<Route> {} }
             HoverPopupOverlay {}
-            ModalOverlay {}
         }
     }
 }
 
 /// The app's single search bar, fixed at the top of every
 /// route so it stays reachable - and stays focused - no matter where the
-/// user navigates. Typing while off the Home route jumps back there so the
-/// results it produces are visible immediately.
+/// user navigates. Typing while another view is showing jumps to the search
+/// results so the results it produces are visible immediately. The toggle
+/// to its left switches between the views.
 #[component]
 fn SearchHeader() -> Element {
     let mut search_input = use_context::<SearchInput>().0;
     let mut search_query = use_context::<SearchQuery>().0;
     let update_available = use_context::<Signal<UpdateAvailable>>();
     let resync = use_context::<ResyncRequest>();
-    let modal = use_context::<ModalSignal>();
+    let library = use_context::<LibrarySignal>();
     let mut filters_open = use_signal(|| false);
     let nav = use_navigator();
-    let route = use_route::<Route>();
-    let is_home = matches!(route, Route::Home {});
+    let router = router();
+    let view = use_route::<Route>().view();
+    // The view the search results were opened from, which ESC returns to.
+    let mut came_from = use_signal(|| View::Pins);
+    // Switches to `target`, which carries the detail view's entity along.
+    let mut show = move |target: View| {
+        let route = router.current::<Route>();
+        if target == View::Results && route.view() != Some(View::Results) {
+            came_from.set(route.view().unwrap_or(View::Pins));
+        }
+        nav.push(Route::of_view(
+            target,
+            current_detail(&route, library.read().as_deref()),
+        ));
+    };
     let mut input_el: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
     // Bumped on every keystroke so a pending debounce task can tell it's
     // been superseded and skip committing its now-stale value.
@@ -60,13 +102,14 @@ fn SearchHeader() -> Element {
     };
 
     // Empties the search (Escape, or the clear button - there's no Escape
-    // key on a phone) and returns to the Home route.
+    // key on a phone) and leaves the results for the view they were opened
+    // from.
     let mut clear = move || {
         search_input.set(String::new());
         search_query.set(String::new());
         debounce_generation.set(debounce_generation() + 1);
-        if !is_home {
-            nav.push(Route::Home {});
+        if view == Some(View::Results) {
+            show(came_from());
         }
     };
 
@@ -96,6 +139,19 @@ fn SearchHeader() -> Element {
         header { class: "fixed inset-x-0 top-0 z-40 flex items-start justify-center gap-2 px-4 py-2.5 {header_state}",
             div { class: "pointer-events-auto min-w-0 max-w-xl flex-1 rounded-2xl border p-1.5 {card_state}",
                 div { class: "flex items-center gap-2",
+                    div { class: "flex shrink-0 overflow-hidden rounded-full border border-gray-300",
+                        for (target , glyph , title) in VIEW_TOGGLES {
+                            button {
+                                key: "{glyph}",
+                                class: "h-[2.125rem] w-8 text-sm leading-none {view_toggle_state(view == Some(target))}",
+                                title,
+                                aria_label: title,
+                                aria_pressed: view == Some(target),
+                                onclick: move |_| show(target),
+                                "{glyph}"
+                            }
+                        }
+                    }
                     div { class: "relative min-w-0 flex-1",
                         input {
                             class: "w-full rounded-full border border-gray-300 py-2 pl-4 pr-10 text-sm outline-none focus:border-gray-400 [&::-webkit-search-cancel-button]:appearance-none",
@@ -107,8 +163,8 @@ fn SearchHeader() -> Element {
                             oninput: move |evt| {
                                 let value = evt.value();
                                 search_input.set(value.clone());
-                                if !is_home {
-                                    nav.push(Route::Home {});
+                                if view != Some(View::Results) {
+                                    show(View::Results);
                                 }
                                 let generation = debounce_generation() + 1;
                                 debounce_generation.set(generation);
@@ -120,15 +176,9 @@ fn SearchHeader() -> Element {
                                 });
                             },
                             onkeydown: move |evt| {
+                                // This input aggressively re-steals focus on blur (see
+                                // `refocus`), so it is the reliable place to catch Escape.
                                 if evt.key() == Key::Escape {
-                                    // The modal overlay's own key handler only fires while
-                                    // it holds focus; this input aggressively re-steals
-                                    // focus on blur (see `refocus`), so it - not the
-                                    // overlay - is the reliable place to catch Escape.
-                                    if modal.0.read().is_some() {
-                                        close_modal(modal);
-                                        return;
-                                    }
                                     if filters_open() {
                                         filters_open.set(false);
                                         return;
@@ -298,59 +348,24 @@ fn FilterChip(
 /// Rendered once here at the layout root - rather than nested inside each
 /// card, as a pure-CSS `:hover` reveal would need to be - so it floats
 /// above every card's own scroll/clip boundary instead of being clipped by
-/// it. Its z-index sits above [`ModalOverlay`]'s so a link hovered from
-/// *inside* the modal still previews on top of it, not underneath.
+/// it.
 #[component]
 fn HoverPopupOverlay() -> Element {
     let hover = use_context::<HoverSignal>().0;
     let library = use_context::<LibrarySignal>();
-    let modal = use_context::<ModalSignal>();
     let Some((target, x, y)) = hover.read().clone() else {
         return rsx! {};
     };
     let Some(lib) = library.read().clone() else {
         return rsx! {};
     };
-    let ctx = RenderCtx::new(&lib, modal, HoverSignal(hover));
+    let ctx = RenderCtx::new(&lib, HoverSignal(hover));
 
     rsx! {
         div {
             class: "fixed z-[300] w-80 max-h-[70vh] overflow-y-auto rounded border border-gray-300 bg-white p-2 text-xs shadow-lg",
             style: "pointer-events: none; left: min({x}px, calc(100vw - 336px)); top: min({y + 16.0}px, calc(100vh - 300px));",
             {render_entity_preview(target.kind, &target.name, &target.source, ctx)}
-        }
-    }
-}
-
-/// The maximized entity view a card title or hyperlink click opens
-/// Escape (handled in `SearchHeader`, see its comment),
-/// clicking the backdrop, and the close button all dismiss it immediately;
-/// only the browser's back/forward buttons walk the history of opened
-/// modals (see `modal_history`).
-#[component]
-fn ModalOverlay() -> Element {
-    let modal_ctx = use_context::<ModalSignal>();
-    let Some(target) = modal_ctx.0.read().clone() else {
-        return rsx! {};
-    };
-
-    rsx! {
-        div {
-            class: "fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 sm:p-6",
-            onclick: move |_| close_modal(modal_ctx),
-            div {
-                class: "relative w-full max-w-2xl",
-                onclick: move |evt| evt.stop_propagation(),
-                button {
-                    class: "absolute -right-3 -top-3 z-20 rounded-full border border-gray-300 bg-white px-2 py-1 text-sm text-gray-500 shadow hover:border-gray-400",
-                    title: "Close",
-                    onclick: move |_| close_modal(modal_ctx),
-                    "✕"
-                }
-                div { class: "max-h-[85vh] overflow-y-auto",
-                    EntityCard { kind: target.kind, source: target.source.clone(), name: target.name.clone(), full: true }
-                }
-            }
         }
     }
 }

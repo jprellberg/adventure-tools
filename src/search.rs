@@ -139,6 +139,10 @@ impl SearchIndex {
         for kind in EntityKind::all() {
             for (position, entity) in library.entities_of(kind).enumerate() {
                 sources.insert(entity.source());
+                // Nameless entities have no title to click, nor an address.
+                if entity.name().trim().is_empty() {
+                    continue;
+                }
                 entries.push(IndexEntry {
                     kind,
                     position,
@@ -188,13 +192,12 @@ struct Candidate<'a> {
 /// entity is a hit only if every word matches at least one of those fields
 /// (in any combination), so "blight bes" needs "blight" somewhere and "bes"
 /// somewhere, not necessarily in the same field. Ranked by summed match cost
-/// (lower is better - see [`fuzzy_cost`]), then alphabetically. `filters`
-/// hides the kinds and sources switched off in the filter menu.
+/// (lower is better - see [`fuzzy_cost`]), then alphabetically; a query
+/// without words matches everything, so the first entities alphabetically
+/// are listed. `filters` hides the kinds and sources switched off in the
+/// filter menu.
 pub fn search<'a>(library: &'a Library, query: &str, filters: &Filters) -> Vec<SearchHit<'a>> {
     let needles: Vec<Needle> = query.split_whitespace().map(Needle::new).collect();
-    if needles.is_empty() {
-        return Vec::new();
-    }
     let index = &library.search_index;
 
     let mut best: BinaryHeap<Candidate> = BinaryHeap::with_capacity(MAX_RESULTS + 1);

@@ -2,11 +2,13 @@ use std::fmt;
 use std::str::FromStr;
 
 use dioxus::prelude::*;
+use dioxus::router::{FromRouteSegments, ToRouteSegments};
 
 use crate::layout::RootLayout;
 use crate::pages::book::BookPage;
 use crate::pages::entity_detail::EntityDetailPage;
-use crate::pages::home::HomePage;
+use crate::pages::home::{PinnedPage, ResultsPage};
+use crate::EntityTarget;
 
 /// The kinds of reference entities the app knows about.
 /// Declaration order must match [`KINDS`].
@@ -256,25 +258,56 @@ impl<'de> serde::Deserialize<'de> for EntityKind {
         s.parse().map_err(serde::de::Error::custom)
     }
 }
+/// Which of the three views the page shows: the search results, the pinned
+/// entities or a single entity in full.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    Results,
+    Pins,
+    Detail,
+}
 
-/// An entity name as a route path segment. The router leaves '/' and '%'
-/// unescaped when it writes a segment, which would split a name such as
+/// The entity the trailing segments of a route name (`kind/source/name`), if
+/// any. The entity of the detail view rides along in the address of the other
+/// views, so it survives switching between them. The router leaves '/' and
+/// '%' unescaped when it writes a segment, which would split a name such as
 /// "Armor (+1/+2)" into two segments (and misread a literal "%2F"), so both
 /// are escaped here.
-#[derive(Clone, Debug, PartialEq)]
-pub struct NameSegment(pub String);
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DetailSegments(pub Option<EntityTarget>);
 
-impl fmt::Display for NameSegment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0.replace('%', "%25").replace('/', "%2F"))
+fn escape_segment(segment: &str) -> String {
+    segment.replace('%', "%25").replace('/', "%2F")
+}
+
+impl ToRouteSegments for DetailSegments {
+    fn display_route_segments(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(target) = &self.0 else {
+            return Ok(());
+        };
+        [
+            target.kind.to_string(),
+            escape_segment(&target.source),
+            escape_segment(&target.name),
+        ]
+        .display_route_segments(f)
     }
 }
 
-impl FromStr for NameSegment {
+/// Segments that don't name a known kind name no entity.
+impl FromRouteSegments for DetailSegments {
     type Err = std::convert::Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(NameSegment(s.to_string()))
+    fn from_route_segments(segments: &[&str]) -> Result<Self, Self::Err> {
+        let target = match segments {
+            [kind, source, name] => kind.parse().ok().map(|kind| EntityTarget {
+                kind,
+                source: source.to_string(),
+                name: name.to_string(),
+            }),
+            _ => None,
+        };
+        Ok(DetailSegments(target))
     }
 }
 
@@ -283,13 +316,12 @@ pub enum Route {
     #[layout(RootLayout)]
     #[route("/")]
     Home {},
-
-    #[route("/entities/:kind/:source/:name")]
-    EntityDetail {
-        kind: EntityKind,
-        source: String,
-        name: NameSegment,
-    },
+    #[route("/pins/:..detail")]
+    Pins { detail: DetailSegments },
+    #[route("/search/:..detail")]
+    Search { detail: DetailSegments },
+    #[route("/entities/:..detail")]
+    EntityDetail { detail: DetailSegments },
     #[route("/books/:source/:..section")]
     Book { source: String, section: Vec<String> },
     #[end_layout]
@@ -297,17 +329,80 @@ pub enum Route {
     NotFound { segments: Vec<String> },
 }
 
-#[component]
-fn Home() -> Element {
-    rsx! {
-        HomePage {}
+impl Route {
+    /// The address of `view` showing (or, for the other views, carrying)
+    /// `detail`. A book is shown in the detail view by its page.
+    pub fn of_view(view: View, detail: Option<EntityTarget>) -> Route {
+        if let (
+            View::Detail,
+            Some(EntityTarget {
+                kind: EntityKind::Books,
+                source,
+                ..
+            }),
+        ) = (view, &detail)
+        {
+            return Route::Book {
+                source: source.clone(),
+                section: Vec::new(),
+            };
+        }
+        let detail = DetailSegments(detail);
+        match view {
+            View::Pins if detail.0.is_none() => Route::Home {},
+            View::Pins => Route::Pins { detail },
+            View::Results => Route::Search { detail },
+            View::Detail => Route::EntityDetail { detail },
+        }
+    }
+
+    /// The view this route is; `None` for the page that is none of them.
+    pub fn view(&self) -> Option<View> {
+        match self {
+            Route::Home {} | Route::Pins { .. } => Some(View::Pins),
+            Route::Search { .. } => Some(View::Results),
+            Route::EntityDetail { .. } | Route::Book { .. } => Some(View::Detail),
+            Route::NotFound { .. } => None,
+        }
+    }
+
+    /// The entity the address names. A book's page names its book by
+    /// source alone.
+    pub fn detail(&self) -> Option<&EntityTarget> {
+        match self {
+            Route::Pins { detail } | Route::Search { detail } | Route::EntityDetail { detail } => detail.0.as_ref(),
+            Route::Home {} | Route::Book { .. } | Route::NotFound { .. } => None,
+        }
     }
 }
 
 #[component]
-fn EntityDetail(kind: EntityKind, source: String, name: NameSegment) -> Element {
+fn Home() -> Element {
     rsx! {
-        EntityDetailPage { kind, source, name: name.0 }
+        PinnedPage {}
+    }
+}
+
+#[component]
+fn Pins(detail: DetailSegments) -> Element {
+    let _ = detail;
+    rsx! {
+        PinnedPage {}
+    }
+}
+
+#[component]
+fn Search(detail: DetailSegments) -> Element {
+    let _ = detail;
+    rsx! {
+        ResultsPage {}
+    }
+}
+
+#[component]
+fn EntityDetail(detail: DetailSegments) -> Element {
+    rsx! {
+        EntityDetailPage { target: detail.0 }
     }
 }
 
@@ -330,6 +425,14 @@ fn NotFound(segments: Vec<String>) -> Element {
 mod tests {
     use super::*;
 
+    fn target(kind: EntityKind, source: &str, name: &str) -> EntityTarget {
+        EntityTarget {
+            kind,
+            source: source.into(),
+            name: name.into(),
+        }
+    }
+
     #[test]
     fn kind_table_follows_declaration_order() {
         for (i, (kind, _)) in KINDS.iter().enumerate() {
@@ -340,13 +443,40 @@ mod tests {
     #[test]
     fn entity_names_survive_the_url() {
         for name in ["Legendary Resistance (4/Day)", "a/b c?d#e%f", "100%2F", "Cloak"] {
-            let route = Route::EntityDetail {
-                kind: EntityKind::Items,
-                source: "XDMG".into(),
-                name: NameSegment(name.into()),
-            };
-            assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{name}");
+            for view in [View::Results, View::Pins, View::Detail] {
+                let route = Route::of_view(view, Some(target(EntityKind::Items, "XDMG", name)));
+                assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{name}");
+            }
         }
+    }
+
+    #[test]
+    fn views_round_trip_through_the_url() {
+        let ghoul = target(EntityKind::Bestiary, "XMM", "Ghoul");
+        for view in [View::Results, View::Pins, View::Detail] {
+            for detail in [None, Some(ghoul.clone())] {
+                let route = Route::of_view(view, detail.clone());
+                let parsed: Route = route.to_string().parse().unwrap();
+                assert_eq!(parsed.view(), Some(view), "{route}");
+                assert_eq!(parsed.detail(), detail.as_ref(), "{route}");
+            }
+        }
+        assert_eq!(Route::of_view(View::Pins, None).to_string(), "/");
+        assert_eq!(
+            Route::of_view(View::Detail, Some(ghoul)).to_string(),
+            "/entities/bestiary/XMM/Ghoul"
+        );
+    }
+
+    #[test]
+    fn a_book_is_shown_by_its_page_in_the_detail_view() {
+        let book = target(EntityKind::Books, "TST", "Test Book");
+        let route = Route::of_view(View::Detail, Some(book.clone()));
+        assert_eq!(route.to_string(), "/books/TST");
+        assert_eq!(route.view(), Some(View::Detail));
+        // The other views carry the book like any entity.
+        let route = Route::of_view(View::Results, Some(book.clone()));
+        assert_eq!(route.to_string().parse::<Route>().unwrap().detail(), Some(&book));
     }
 
     #[test]

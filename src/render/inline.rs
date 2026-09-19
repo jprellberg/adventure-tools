@@ -361,13 +361,8 @@ fn item_property_link(args: &[String], ctx: RenderCtx) -> Element {
 
 /// Hovering floats a preview above every card (see
 /// `layout::HoverPopupOverlay`) unless the link points back at the entity
-/// whose card is currently being rendered (`ctx.current`). A plain click opens the
-/// target maximized in the modal overlay (`layout::ModalOverlay`) instead
-/// of navigating; a modified click (ctrl/cmd/shift/middle-click) - "open in
-/// a new tab" - is left alone, since this renders a real link to the
-/// `/entities/:kind/:source/:name` permalink and `Link`'s `onclick_only`
-/// only suppresses its own default navigation for a plain click, not a
-/// modified one.
+/// whose card is currently being rendered (`ctx.current`). A click opens
+/// the target in the detail view.
 fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ctx: RenderCtx) -> Element {
     if name.is_empty() {
         return rsx! {};
@@ -385,22 +380,9 @@ fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ct
         k == kind && s.eq_ignore_ascii_case(&target.source) && n.eq_ignore_ascii_case(&target.name)
     });
 
-    // Computed before either closure below moves `target` into itself.
-    let permalink = crate::routes::Route::EntityDetail {
-        kind,
-        source: target.source.clone(),
-        name: crate::routes::NameSegment(target.name.clone()),
-    };
+    let to = crate::routes::Route::of_view(crate::routes::View::Detail, Some(target.clone()));
 
-    let modal = ctx.modal;
     let mut hover = ctx.hover.0;
-    let onclick = {
-        let target = target.clone();
-        move |_| {
-            hover.set(None);
-            crate::modal_history::open_modal(modal, target.clone());
-        }
-    };
     let onmouseenter = move |evt: MouseEvent| {
         if is_self {
             return;
@@ -414,9 +396,8 @@ fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ct
         span { onmouseenter, onmouseleave,
             Link {
                 class: "cursor-pointer text-blue-700 underline decoration-dotted underline-offset-2 hover:decoration-solid",
-                to: permalink,
-                onclick_only: true,
-                onclick,
+                to,
+                onclick: move |_| hover.set(None),
                 {render_inline(display, ctx)}
             }
         }

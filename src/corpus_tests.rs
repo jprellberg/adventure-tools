@@ -798,7 +798,12 @@ fn search_ranks_and_caps_results() {
     // Keywords: a subclass is found through its class name.
     let hits = crate::search::search(library(), "champion fighter", &Default::default());
     assert!(hits.iter().any(|h| h.entity.name() == "Champion"));
-    assert!(crate::search::search(library(), "   ", &Default::default()).is_empty());
+
+    // Without words everything matches, alphabetically.
+    let hits = crate::search::search(library(), "   ", &Default::default());
+    assert_eq!(hits.len(), 60);
+    let names: Vec<String> = hits.iter().map(|h| h.entity.name().to_lowercase()).collect();
+    assert!(names.is_sorted(), "{names:?}");
 }
 
 /// Every entity has its own pin id, and the library finds it again by it.

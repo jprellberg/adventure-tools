@@ -3,7 +3,6 @@ mod card;
 mod corpus_tests;
 mod data;
 mod layout;
-mod modal_history;
 mod model;
 mod pages;
 mod pins;
@@ -57,12 +56,6 @@ pub struct EntityTarget {
     pub name: String,
 }
 
-/// The entity currently shown maximized in the modal overlay (by clicking
-/// a card title or a hyperlink), if any - see
-/// `layout::ModalOverlay`.
-#[derive(Clone, Copy, PartialEq)]
-pub struct ModalSignal(pub Signal<Option<EntityTarget>>);
-
 /// The entity currently previewed in the floating hover popup, plus where to anchor it - see `layout::HoverPopupOverlay`. Kept as
 /// a single app-level signal (rather than a popup nested under each link,
 /// as a pure-CSS `:hover` reveal would be) so the preview can float above
@@ -90,7 +83,6 @@ fn App() -> Element {
     use_context_provider(|| SearchInput(Signal::new(String::new())));
     use_context_provider(|| SearchQuery(Signal::new(String::new())));
     use_context_provider(|| update_available);
-    use_context_provider(|| ModalSignal(Signal::new(None)));
     use_context_provider(|| HoverSignal(Signal::new(None)));
     use_context_provider(|| Signal::new(Use2024Rules(true)));
     use_context_provider(|| Signal::new(search::Filters::default()));
