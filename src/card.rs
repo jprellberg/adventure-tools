@@ -210,7 +210,7 @@ pub fn EntityCard(
     };
 
     let size_class = if full {
-        "relative w-full overflow-x-hidden rounded border border-gray-200 bg-white p-4 shadow-sm".to_string()
+        "relative w-full overflow-x-hidden bg-white p-4".to_string()
     } else {
         format!(
             "relative {} max-w-full shrink-0 overflow-y-auto overflow-x-hidden rounded border border-gray-200 bg-white p-2 shadow-sm",
