@@ -126,8 +126,13 @@ fn SearchHeader() -> Element {
         }
     };
 
+    let filters = use_context::<Signal<Filters>>();
+    let rules = use_context::<Signal<Use2024Rules>>();
     let dots_state = if filters_open() {
         "bg-gray-100 text-gray-900"
+    } else if !filters.read().is_default_for(rules().0) {
+        // Something beyond the ruleset is filtered out.
+        "border-amber-400 bg-amber-100 text-amber-800"
     } else {
         "bg-white text-gray-600"
     };

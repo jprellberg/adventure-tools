@@ -64,6 +64,17 @@ impl Filters {
         }
     }
 
+    /// Whether nothing is filtered out beyond the other edition's core
+    /// rulebooks: every kind and every other source is on.
+    pub fn is_default_for(&self, use_2024: bool) -> bool {
+        let excluded: HashSet<Box<str>> = ruleset_excluded_sources(use_2024)
+            .iter()
+            .copied()
+            .map(|source| source.to_lowercase().into())
+            .collect();
+        self.hidden_kinds.is_empty() && self.hidden_sources == excluded
+    }
+
     pub fn kind_shown(&self, kind: EntityKind) -> bool {
         !self.hidden_kinds.contains(&kind)
     }
@@ -314,10 +325,25 @@ fn word_prefix_cost(haystack: &str, needle: &[char]) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fuzzy_cost, Needle};
+    use super::{fuzzy_cost, Filters, Needle};
+    use crate::routes::EntityKind;
 
     fn cost(haystack: &str, needle: &str) -> Option<i32> {
         fuzzy_cost(haystack, &Needle::new(needle))
+    }
+
+    #[test]
+    fn filters_are_default_until_changed_beyond_the_ruleset() {
+        let mut filters = Filters::default();
+        assert!(filters.is_default_for(true));
+        assert!(!filters.is_default_for(false));
+        filters.set_ruleset(false);
+        assert!(filters.is_default_for(false));
+        filters.toggle_source("MPMM");
+        assert!(!filters.is_default_for(false));
+        filters.toggle_source("MPMM");
+        filters.toggle_kind(EntityKind::Spells);
+        assert!(!filters.is_default_for(false));
     }
 
     #[test]
