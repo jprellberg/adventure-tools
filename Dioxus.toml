@@ -2,6 +2,9 @@
 
 [web.app]
 
+# Served from https://jprellberg.github.io/adventure-tools/ on GitHub Pages
+base_path = "adventure-tools"
+
 # HTML title tag content
 title = "adventure-tools"
 
