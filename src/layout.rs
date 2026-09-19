@@ -21,7 +21,7 @@ pub fn RootLayout() -> Element {
     crate::pins::mirror_in_url(use_context::<crate::pins::PinsSignal>());
 
     rsx! {
-        div { class: "min-h-screen min-w-[22rem] bg-white",
+        div { class: "min-h-screen bg-white",
             SearchHeader {}
             main { class: "px-4 pb-4 pt-20", Outlet::<Route> {} }
             HoverPopupOverlay {}
@@ -163,7 +163,7 @@ fn ModalOverlay() -> Element {
 
     rsx! {
         div {
-            class: "fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-6",
+            class: "fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 sm:p-6",
             onclick: move |_| close_modal(modal_ctx),
             div {
                 class: "relative w-full max-w-2xl",

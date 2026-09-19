@@ -144,7 +144,7 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     };
 
     rsx! {
-        div { class: "flex items-center gap-2 py-2",
+        div { class: "flex items-center gap-2 py-0.5",
             div { class: "min-w-0 flex-1 text-base font-bold leading-tight",
                 Link {
                     class: "cursor-pointer hover:underline",
@@ -196,7 +196,7 @@ pub fn EntityCard(
         "relative w-full overflow-x-hidden rounded border border-gray-200 bg-white p-4 shadow-sm".to_string()
     } else {
         format!(
-            "relative {} shrink-0 overflow-y-auto overflow-x-hidden rounded border border-gray-200 bg-white p-2 shadow-sm",
+            "relative {} max-w-full shrink-0 overflow-y-auto overflow-x-hidden rounded border border-gray-200 bg-white p-2 shadow-sm",
             size.classes()
         )
     };

@@ -70,14 +70,7 @@ fn pinned_grid(lib: &Library, pins: PinsSignal, use_2024: bool, viewport: Viewpo
         .filter(|(_, entity)| !excluded_by_ruleset(entity.source(), use_2024))
         .map(|(kind, entity)| (kind, entity.source().to_string(), entity.name().to_string()))
         .collect();
-    let size = CardSize::fitting(known.len(), viewport);
-    rsx! {
-        div { class: "flex flex-wrap justify-center gap-4",
-            for (kind , source , name) in known {
-                EntityCard { key: "{kind}|{source}|{name}", kind, source, name, size }
-            }
-        }
-    }
+    entities(&known, viewport)
 }
 
 fn results_grid(hits: &[(EntityKind, String, String)], q: &str, viewport: Viewport) -> Element {
@@ -86,19 +79,26 @@ fn results_grid(hits: &[(EntityKind, String, String)], q: &str, viewport: Viewpo
             p { class: "mt-32 text-center text-gray-400", "No results for \"{q}\"." }
         };
     }
+    entities(hits, viewport)
+}
+
+/// The given entities as a grid of cards, or - in single-column windows,
+/// where cards would show hardly more than one at a time - as a list of
+/// one-line rows.
+fn entities(items: &[(EntityKind, String, String)], viewport: Viewport) -> Element {
     if CardSize::single_column(viewport) {
         return rsx! {
             div { class: "mx-auto w-full max-w-xl",
-                for (kind , source , name) in hits.iter().cloned() {
+                for (kind , source , name) in items.iter().cloned() {
                     EntityRow { key: "{kind}|{source}|{name}", kind, source, name }
                 }
             }
         };
     }
-    let size = CardSize::fitting(hits.len(), viewport);
+    let size = CardSize::fitting(items.len(), viewport);
     rsx! {
         div { class: "flex flex-wrap justify-center gap-4",
-            for (kind , source , name) in hits.iter().cloned() {
+            for (kind , source , name) in items.iter().cloned() {
                 EntityCard { key: "{kind}|{source}|{name}", kind, source, name, size }
             }
         }
