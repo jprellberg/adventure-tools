@@ -32,7 +32,7 @@ jobs:
         run: cargo binstall dioxus-cli@0.7.10 --no-confirm --force
 
       - name: Build
-        run: dx build --release --platform web
+        run: dx build --release --platform web --debug-symbols=false
 
       # GitHub Pages serves 404.html for unknown paths; the app shell lets the
       # client-side router handle deep links.
