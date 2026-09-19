@@ -114,7 +114,7 @@ pub fn BookPage(source: String, section: Vec<String>) -> Element {
     let location = book_route(&source, &selected);
     use_effect(use_reactive!(|location| {
         let _ = location;
-        document::eval("document.getElementById('book-content')?.scrollTo(0, 0);");
+        document::eval("window.scrollTo(0, 0);");
     }));
 
     let Some(lib) = library.read().clone() else {
@@ -156,17 +156,15 @@ pub fn BookPage(source: String, section: Vec<String>) -> Element {
     };
 
     rsx! {
-        div { class: "mx-auto flex h-[calc(100dvh-6rem)] w-full max-w-[90rem] flex-col justify-center gap-4 lg:flex-row",
-            nav { class: "flex max-h-[35%] shrink-0 flex-col bg-white lg:max-h-none lg:w-72",
+        div { class: "mx-auto flex w-full max-w-[90rem] flex-col items-start justify-center gap-4 lg:flex-row",
+            nav { class: "sticky top-20 z-10 flex max-h-[35dvh] w-full shrink-0 flex-col bg-white lg:h-[calc(100dvh-6rem)] lg:max-h-none lg:w-72",
                 h2 { class: "p-2 text-base font-bold leading-tight",
                     "{title}"
                     {kind_source_tags(EntityKind::Books, &source, &lib)}
                 }
                 div { class: "min-h-0 flex-1 overflow-y-auto py-1", {contents} }
             }
-            article {
-                id: "book-content",
-                class: "min-h-0 w-full flex-1 overflow-y-auto bg-white p-4 text-sm lg:max-w-[63rem]",
+            article { class: "w-full min-w-0 flex-1 bg-white p-4 text-sm lg:max-w-[63rem]",
                 {text}
             }
         }
