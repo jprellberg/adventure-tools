@@ -4,13 +4,13 @@
 use dioxus::prelude::*;
 
 use crate::card::{CardSize, EntityCard, EntityRow};
-use crate::data::{excluded_by_ruleset, Library};
+use crate::data::Library;
 use crate::pins::PinsSignal;
 use crate::routes::EntityKind;
-use crate::search;
+use crate::search::{self, Filters};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
-use crate::{SearchInput, SearchQuery, Use2024Rules};
+use crate::{SearchInput, SearchQuery};
 
 #[component]
 pub fn HomePage() -> Element {
@@ -22,15 +22,15 @@ pub fn HomePage() -> Element {
     let search_query = use_context::<SearchQuery>().0;
     let library = use_context::<LibrarySignal>();
     let pins = use_context::<PinsSignal>();
-    let use_2024 = use_context::<Signal<Use2024Rules>>();
+    let filters = use_context::<Signal<Filters>>();
     let viewport = use_context::<Signal<Viewport>>();
-    // The hits are recomputed only when the query, the ruleset or the
-    // library change, not on every render of this page.
+    // The hits are recomputed only when the query, the filters
+    // or the library change, not on every render of this page.
     let hits = use_memo(move || {
         let Some(lib) = library.read().clone() else {
             return Vec::new();
         };
-        search::search(&lib, &search_query.read(), use_2024().0)
+        search::search(&lib, &search_query.read(), &filters.read())
             .into_iter()
             .map(|hit| (hit.kind, hit.entity.source().to_string(), hit.entity.name().to_string()))
             .collect::<Vec<_>>()
@@ -44,7 +44,7 @@ pub fn HomePage() -> Element {
     rsx! {
         div { class: "w-full",
             if typed.trim().is_empty() {
-                {pinned_grid(&lib, pins, use_2024().0, viewport())}
+                {pinned_grid(&lib, pins, &filters.read(), viewport())}
             } else {
                 {results_grid(&hits.read(), &q, viewport())}
             }
@@ -52,7 +52,7 @@ pub fn HomePage() -> Element {
     }
 }
 
-fn pinned_grid(lib: &Library, pins: PinsSignal, use_2024: bool, viewport: Viewport) -> Element {
+fn pinned_grid(lib: &Library, pins: PinsSignal, filters: &Filters, viewport: Viewport) -> Element {
     if pins.read().is_empty() {
         return rsx! {
             p { class: "mt-32 text-center text-gray-400",
@@ -62,12 +62,12 @@ fn pinned_grid(lib: &Library, pins: PinsSignal, use_2024: bool, viewport: Viewpo
     }
     // Only entities the library actually has (a pin can outlive a data
     // update that renamed or dropped its entity) and that the current
-    // ruleset selection doesn't hide.
+    // filters don't hide.
     let known: Vec<_> = pins
         .read()
         .iter()
         .filter_map(|id| lib.pinned(*id))
-        .filter(|(_, entity)| !excluded_by_ruleset(entity.source(), use_2024))
+        .filter(|(kind, entity)| filters.allows(*kind, entity.source()))
         .map(|(kind, entity)| (kind, entity.source().to_string(), entity.name().to_string()))
         .collect();
     entities(&known, viewport)

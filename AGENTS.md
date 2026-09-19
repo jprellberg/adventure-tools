@@ -14,7 +14,13 @@ Typing in the search bar should update the search results immediately (debounced
 
 Search matches fuzzily against each entity's name, kind, and source, not just plain substrings: a query word matches if it's a substring of the field, or if it decomposes into consecutive prefixes of the field's words (e.g. "smogre" matches "Smoke Grenade" as "smo"+"gre"; "bes" matches the "Bestiary" kind). Multiple space-separated query words are ANDed together and can each match a different field, so "blight bes" finds only the bestiary entities named Blight.
 
-A small toggle button to the right of the search bar switches between 2014 and 2024 rules. 2024 (the default) filters out the three 2014 core rulebooks; 2014 is the inverse, filtering out their 2024 revisions. Every other source is unaffected by the toggle. The toggle affects search results and the pinned grid, not entity content reached by following a link.
+A round button with three vertical dots to the right of the search bar opens the filter menu: a card border appears around the search bar, the button and a filter area below them (scrolling when it gets tall), and the page on either side of the card is dimmed slightly but stays visible. ESC or a click anywhere outside the card closes the menu. The area holds:
+
+* A 2014/2024 rules toggle. 2024 (the default) switches off the source buttons of the three 2014 core rulebooks and on those of their 2024 revisions; 2014 is the inverse. The toggle only sets those six source buttons, which can afterwards be changed individually; every other source is unaffected by it.
+* One on/off button per entity kind, colored like the kind tag on the cards while on and greyed out while off, with "all" and "none" buttons to switch every kind on or off.
+* The same for every source in the library, colored like the source tag (tooltip: the sourcebook's full title), with the core rulebooks (the ones with their own tag color) listed first, then the rest alphabetically.
+
+Everything except the 2014 core rulebooks is on by default; entities of a kind or source that is off are hidden. The filters affect search results and the pinned grid, not entity content reached by following a link (which prefers the edition the rules toggle selects).
 
 When the app opens for the first time, the required JSON data needs to be downloaded and cached. On subsequent startups, if data already exists, the app only checks if a newer version of the data is available for download and, if so, shows an icon button in the top right corner to start the update. While a download is in progress, the app shows a full-page centered loading screen with a spinner and text naming the resource currently being fetched or processed (e.g. the data file being downloaded).
 

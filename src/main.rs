@@ -93,6 +93,7 @@ fn App() -> Element {
     use_context_provider(|| ModalSignal(Signal::new(None)));
     use_context_provider(|| HoverSignal(Signal::new(None)));
     use_context_provider(|| Signal::new(Use2024Rules(true)));
+    use_context_provider(|| Signal::new(search::Filters::default()));
 
     let resync: ResyncRequest = use_coroutine(move |mut rx: UnboundedReceiver<()>| async move {
         while rx.next().await.is_some() {

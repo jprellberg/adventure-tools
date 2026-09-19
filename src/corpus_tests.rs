@@ -778,17 +778,17 @@ fn snapshot_round_trips_the_library() {
     assert_eq!(original.books.len(), restored.books.len());
     // The search index isn't stored; decoding rebuilds it.
     assert_eq!(
-        crate::search::search(original, "ghoul", true).len(),
-        crate::search::search(&restored, "ghoul", true).len()
+        crate::search::search(original, "ghoul", &Default::default()).len(),
+        crate::search::search(&restored, "ghoul", &Default::default()).len()
     );
 }
 
 #[test]
 fn search_ranks_and_caps_results() {
-    let hits = crate::search::search(library(), "a", true);
+    let hits = crate::search::search(library(), "a", &Default::default());
     assert_eq!(hits.len(), 60, "a broad query is capped");
 
-    let hits = crate::search::search(library(), "ghoul", true);
+    let hits = crate::search::search(library(), "ghoul", &Default::default());
     let names: Vec<&str> = hits.iter().map(|h| h.entity.name()).collect();
     assert_eq!(names[0], "Ghoul", "an exact name match ranks first: {names:?}");
     assert!(hits
@@ -796,9 +796,9 @@ fn search_ranks_and_caps_results() {
         .all(|h| !crate::data::excluded_by_ruleset(h.entity.source(), true)));
 
     // Keywords: a subclass is found through its class name.
-    let hits = crate::search::search(library(), "champion fighter", true);
+    let hits = crate::search::search(library(), "champion fighter", &Default::default());
     assert!(hits.iter().any(|h| h.entity.name() == "Champion"));
-    assert!(crate::search::search(library(), "   ", true).is_empty());
+    assert!(crate::search::search(library(), "   ", &Default::default()).is_empty());
 }
 
 /// Every entity has its own pin id, and the library finds it again by it.

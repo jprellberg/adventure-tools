@@ -7,9 +7,9 @@
 //! library is loaded ([`SearchIndex`]), so a search allocates nothing per
 //! entity; only the best [`MAX_RESULTS`] matches are kept, in a bounded heap.
 
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashSet};
 
-use crate::data::{excluded_by_ruleset, EntityRef, Library};
+use crate::data::{is_base_source, ruleset_excluded_sources, EntityRef, Library};
 use crate::routes::EntityKind;
 
 pub struct SearchHit<'a> {
@@ -31,6 +31,86 @@ const FIELD_PENALTY: i32 = 1000;
 /// kind/source match.
 const KEYWORD_PENALTY: i32 = FIELD_PENALTY / 2;
 
+/// The kinds and sources the user has switched off in the filter menu. The
+/// default is the 2024 ruleset: the 2014 core rulebooks are off, everything
+/// else is on.
+#[derive(Clone, PartialEq)]
+pub struct Filters {
+    hidden_kinds: HashSet<EntityKind>,
+    /// Lowercased source codes.
+    hidden_sources: HashSet<Box<str>>,
+}
+
+impl Default for Filters {
+    fn default() -> Self {
+        let mut filters = Filters {
+            hidden_kinds: HashSet::new(),
+            hidden_sources: HashSet::new(),
+        };
+        filters.set_ruleset(true);
+        filters
+    }
+}
+
+impl Filters {
+    /// Switches off the core rulebooks of the other edition and on those of
+    /// the selected one; every other source keeps its state.
+    pub fn set_ruleset(&mut self, use_2024: bool) {
+        for source in ruleset_excluded_sources(use_2024) {
+            self.hidden_sources.insert(source.to_lowercase().into());
+        }
+        for source in ruleset_excluded_sources(!use_2024) {
+            self.hidden_sources.remove(source.to_lowercase().as_str());
+        }
+    }
+
+    pub fn kind_shown(&self, kind: EntityKind) -> bool {
+        !self.hidden_kinds.contains(&kind)
+    }
+
+    /// `source` must be lowercased.
+    fn source_shown_lowercased(&self, source: &str) -> bool {
+        !self.hidden_sources.contains(source)
+    }
+
+    pub fn source_shown(&self, source: &str) -> bool {
+        self.source_shown_lowercased(&source.to_lowercase())
+    }
+
+    pub fn allows(&self, kind: EntityKind, source: &str) -> bool {
+        self.kind_shown(kind) && self.source_shown(source)
+    }
+
+    pub fn toggle_kind(&mut self, kind: EntityKind) {
+        if !self.hidden_kinds.remove(&kind) {
+            self.hidden_kinds.insert(kind);
+        }
+    }
+
+    pub fn toggle_source(&mut self, source: &str) {
+        let source: Box<str> = source.to_lowercase().into();
+        if !self.hidden_sources.remove(&source) {
+            self.hidden_sources.insert(source);
+        }
+    }
+
+    pub fn set_all_kinds(&mut self, shown: bool) {
+        self.hidden_kinds = if shown {
+            HashSet::new()
+        } else {
+            EntityKind::all().collect()
+        };
+    }
+
+    pub fn set_all_sources(&mut self, shown: bool, sources: &[Box<str>]) {
+        self.hidden_sources = if shown {
+            HashSet::new()
+        } else {
+            sources.iter().map(|s| s.to_lowercase().into()).collect()
+        };
+    }
+}
+
 /// One entity's searchable text, lowercased.
 #[derive(Clone)]
 struct IndexEntry {
@@ -48,13 +128,17 @@ pub struct SearchIndex {
     entries: Vec<IndexEntry>,
     /// Lowercased kind labels, indexed by `EntityKind as usize`.
     kind_labels: Vec<Box<str>>,
+    /// Every source code in the library: the core rulebooks first, then the rest, each sorted case-insensitively.
+    pub sources: Vec<Box<str>>,
 }
 
 impl SearchIndex {
     pub fn build(library: &Library) -> Self {
         let mut entries = Vec::new();
+        let mut sources = HashSet::new();
         for kind in EntityKind::all() {
             for (position, entity) in library.entities_of(kind).enumerate() {
+                sources.insert(entity.source());
                 entries.push(IndexEntry {
                     kind,
                     position,
@@ -65,7 +149,13 @@ impl SearchIndex {
             }
         }
         let kind_labels = EntityKind::all().map(|k| k.label().to_lowercase().into()).collect();
-        SearchIndex { entries, kind_labels }
+        let mut sources: Vec<Box<str>> = sources.into_iter().map(Box::from).collect();
+        sources.sort_by_key(|s| (!is_base_source(s), s.to_lowercase()));
+        SearchIndex {
+            entries,
+            kind_labels,
+            sources,
+        }
     }
 }
 
@@ -98,10 +188,9 @@ struct Candidate<'a> {
 /// entity is a hit only if every word matches at least one of those fields
 /// (in any combination), so "blight bes" needs "blight" somewhere and "bes"
 /// somewhere, not necessarily in the same field. Ranked by summed match cost
-/// (lower is better - see [`fuzzy_cost`]), then alphabetically. `use_2024`
-/// hides whichever core rulebooks the ruleset toggle currently
-/// excludes (see [`crate::data::excluded_by_ruleset`]).
-pub fn search<'a>(library: &'a Library, query: &str, use_2024: bool) -> Vec<SearchHit<'a>> {
+/// (lower is better - see [`fuzzy_cost`]), then alphabetically. `filters`
+/// hides the kinds and sources switched off in the filter menu.
+pub fn search<'a>(library: &'a Library, query: &str, filters: &Filters) -> Vec<SearchHit<'a>> {
     let needles: Vec<Needle> = query.split_whitespace().map(Needle::new).collect();
     if needles.is_empty() {
         return Vec::new();
@@ -110,7 +199,7 @@ pub fn search<'a>(library: &'a Library, query: &str, use_2024: bool) -> Vec<Sear
 
     let mut best: BinaryHeap<Candidate> = BinaryHeap::with_capacity(MAX_RESULTS + 1);
     for (i, entry) in index.entries.iter().enumerate() {
-        if excluded_by_ruleset(&entry.source, use_2024) {
+        if !filters.kind_shown(entry.kind) || !filters.source_shown_lowercased(&entry.source) {
             continue;
         }
         let kind_label = &index.kind_labels[entry.kind as usize];

@@ -290,12 +290,18 @@ pub fn is_base_source(code: &str) -> bool {
 /// have both a 2014 and a 2024 edition in the corpus; every other source is shown regardless of the
 /// toggle.
 pub fn excluded_by_ruleset(source: &str, use_2024: bool) -> bool {
-    let excluded: &[&str] = if use_2024 {
+    ruleset_excluded_sources(use_2024)
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case(source))
+}
+
+/// The core rulebooks the given ruleset selection hides.
+pub fn ruleset_excluded_sources(use_2024: bool) -> &'static [&'static str] {
+    if use_2024 {
         &["PHB", "DMG", "MM"]
     } else {
         &["XPHB", "XDMG", "XMM"]
-    };
-    excluded.iter().any(|s| s.eq_ignore_ascii_case(source))
+    }
 }
 
 /// Whether a newer commit of the tracked 5etools-src branch is available

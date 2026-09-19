@@ -15,17 +15,22 @@ use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
 use crate::{EntityTarget, HoverSignal, ModalSignal};
 
+/// The colors of a source's tag.
+pub fn source_badge_classes(source: &str) -> &'static str {
+    if is_base_source(source) {
+        "bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-300"
+    } else {
+        "bg-indigo-50 text-indigo-700"
+    }
+}
+
 /// The kind + source tag pair shown inline after an entity's title; they
 /// wrap along with the title text. The three core rulebooks get
 /// their own gold tag color since nearly every card traces back to one of
 /// them; every source tag's tooltip names its sourcebook in full where
 /// known.
 pub fn kind_source_tags(kind: EntityKind, source: &str, lib: &Library) -> Element {
-    let source_classes = if is_base_source(source) {
-        "bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-300"
-    } else {
-        "bg-indigo-50 text-indigo-700"
-    };
+    let source_classes = source_badge_classes(source);
     let source_title = lib.source_full_name(source).unwrap_or(source).to_string();
     rsx! {
         span { class: "ml-1.5 rounded px-1.75 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide {kind.badge_classes()}",
