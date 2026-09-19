@@ -77,10 +77,6 @@ impl Filters {
         self.source_shown_lowercased(&source.to_lowercase())
     }
 
-    pub fn allows(&self, kind: EntityKind, source: &str) -> bool {
-        self.kind_shown(kind) && self.source_shown(source)
-    }
-
     pub fn toggle_kind(&mut self, kind: EntityKind) {
         if !self.hidden_kinds.remove(&kind) {
             self.hidden_kinds.insert(kind);

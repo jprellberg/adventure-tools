@@ -220,7 +220,13 @@ fn SearchHeader() -> Element {
                     }
                 }
                 if filters_open() {
-                    FilterPanel {}
+                    FilterPanel {
+                        on_change: move |_| {
+                            if view != Some(View::Results) {
+                                show(View::Results);
+                            }
+                        },
+                    }
                 }
             }
             if update_available().0 {
@@ -240,7 +246,7 @@ fn SearchHeader() -> Element {
 /// switches the core rulebooks' source buttons) and one on/off button per
 /// entity kind and per source, tinted like the tags on the cards.
 #[component]
-fn FilterPanel() -> Element {
+fn FilterPanel(on_change: EventHandler<()>) -> Element {
     let library = use_context::<LibrarySignal>();
     let mut rules = use_context::<Signal<Use2024Rules>>();
     let mut filters = use_context::<Signal<Filters>>();
@@ -260,6 +266,7 @@ fn FilterPanel() -> Element {
                         onclick: move |_| {
                             rules.set(Use2024Rules(use_2024));
                             filters.write().set_ruleset(use_2024);
+                            on_change.call(());
                         },
                         "{label}"
                     }
@@ -267,14 +274,20 @@ fn FilterPanel() -> Element {
             }
             FilterSection {
                 label: "Kinds",
-                on_all: move |shown| filters.write().set_all_kinds(shown),
+                on_all: move |shown| {
+                    filters.write().set_all_kinds(shown);
+                    on_change.call(());
+                },
                 for kind in EntityKind::all() {
                     FilterChip {
                         key: "{kind}",
                         label: kind.label(),
                         classes: kind.badge_classes(),
                         on: filters.read().kind_shown(kind),
-                        onclick: move |_| filters.write().toggle_kind(kind),
+                        onclick: move |_| {
+                            filters.write().toggle_kind(kind);
+                            on_change.call(());
+                        },
                     }
                 }
             }
@@ -282,7 +295,10 @@ fn FilterPanel() -> Element {
                 label: "Sources",
                 on_all: {
                     let lib = lib.clone();
-                    move |shown| filters.write().set_all_sources(shown, &lib.search_index.sources)
+                    move |shown| {
+                        filters.write().set_all_sources(shown, &lib.search_index.sources);
+                        on_change.call(());
+                    }
                 },
                 for source in lib.search_index.sources.iter() {
                     FilterChip {
@@ -293,7 +309,10 @@ fn FilterPanel() -> Element {
                         on: filters.read().source_shown(source),
                         onclick: {
                             let source = source.clone();
-                            move |_| filters.write().toggle_source(&source)
+                            move |_| {
+                                filters.write().toggle_source(&source);
+                                on_change.call(());
+                            }
                         },
                     }
                 }

@@ -11,12 +11,11 @@ use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
 use crate::SearchQuery;
 
-/// The pinned entities that the filters don't hide.
+/// The pinned entities, whatever the filters say.
 #[component]
 pub fn PinnedPage() -> Element {
     let library = use_context::<LibrarySignal>();
     let pins = use_context::<PinsSignal>();
-    let filters = use_context::<Signal<Filters>>();
     let viewport = use_context::<Signal<Viewport>>();
     let Some(lib) = library.read().clone() else {
         return rsx! {};
@@ -29,13 +28,11 @@ pub fn PinnedPage() -> Element {
         };
     }
     // Only entities the library actually has (a pin can outlive a data
-    // update that renamed or dropped its entity) and that the current
-    // filters don't hide.
+    // update that renamed or dropped its entity).
     let known: Vec<_> = pins
         .read()
         .iter()
         .filter_map(|id| lib.pinned(*id))
-        .filter(|(kind, entity)| filters.read().allows(*kind, entity.source()))
         .map(|(kind, entity)| (kind, entity.source().to_string(), entity.name().to_string()))
         .collect();
     rsx! {
