@@ -354,6 +354,13 @@ fn layout_for(kind: EntityKind, o: &Other) -> Layout {
             l.subtitle = str_at(x, "group").map(book_group).unwrap_or_default().to_string();
             l.line("Author:", str_at(x, "author").unwrap_or_default());
             l.line("Published:", str_at(x, "published").unwrap_or_default());
+            l.line("Storyline:", str_at(x, "storyline").unwrap_or_default());
+            if let Some(level) = x.get("level") {
+                let bound = |key| level.get(key).and_then(Value::as_i64);
+                if let (Some(start), Some(end)) = (bound("start"), bound("end")) {
+                    l.line("Levels:", format!("{start}-{end}"));
+                }
+            }
         }
         _ => {}
     }

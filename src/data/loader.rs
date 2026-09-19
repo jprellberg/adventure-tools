@@ -275,6 +275,7 @@ const OTHER_SOURCES: &[(EntityKind, &str, &[&str])] = &[
     ),
     (EntityKind::CrochetPatterns, "homecrafts.json", &["crochetPattern"]),
     (EntityKind::Books, "books.json", &["book"]),
+    (EntityKind::Books, "adventures.json", &["adventure"]),
 ];
 
 /// Reshapes the few kinds whose source data isn't already name/source/

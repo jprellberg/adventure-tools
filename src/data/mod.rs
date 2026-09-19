@@ -337,14 +337,18 @@ pub async fn load_library(mut progress: Signal<String>) -> Result<Library, Strin
     }
 }
 
-/// The chapters of the book with the given `books.json` id, read from the
-/// cached files: a book's text is far larger than the rest of the library,
-/// so it is parsed only when its page is opened.
+/// The chapters of the book or adventure with the given `books.json` or
+/// `adventures.json` id, read from the cached files: its text is far larger
+/// than the rest of the library, so it is parsed only when its page is opened.
 pub async fn load_book(id: &str) -> Result<Vec<Value>, String> {
-    let path = format!("book/book-{}.json", id.to_lowercase());
-    let raw = db::get(db::STORE_FILES, &path)
-        .await?
-        .ok_or_else(|| format!("{path} missing from the local data cache"))?;
+    let id = id.to_lowercase();
+    let mut path = format!("book/book-{id}.json");
+    let mut cached = db::get(db::STORE_FILES, &path).await?;
+    if cached.is_none() {
+        path = format!("adventure/adventure-{id}.json");
+        cached = db::get(db::STORE_FILES, &path).await?;
+    }
+    let raw = cached.ok_or_else(|| format!("{path} missing from the local data cache"))?;
     let mut file: Value = serde_json::from_str(&raw).map_err(|e| format!("parsing {path}: {e}"))?;
     Ok(loader::take_array(&mut file, "data"))
 }
