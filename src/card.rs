@@ -109,7 +109,8 @@ impl CardSize {
     }
 }
 
-/// A search result reduced to one line - the title and its tags - for
+/// A search result reduced to one line - the title and its tags, with the
+/// pin toggle right-aligned - for
 /// single-column windows, where full cards would leave next to nothing of
 /// the result list visible (especially with the on-screen keyboard open).
 /// Clicking the title maximizes the entity like a card's title does.
@@ -118,6 +119,7 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     let library = use_context::<LibrarySignal>();
     let modal = use_context::<ModalSignal>();
     let hover = use_context::<HoverSignal>();
+    let pins = use_context::<PinsSignal>();
     let Some(lib) = library.read().clone() else {
         return rsx! {};
     };
@@ -135,20 +137,37 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
         name: target.name.clone(),
     };
     let ctx = RenderCtx::new(&lib, modal, hover);
+    let pinned = is_pinned(pins, kind, &target.source, &target.name);
+    let toggle = {
+        let target = target.clone();
+        move |_| toggle_pin(pins, kind, &target.source, &target.name)
+    };
 
     rsx! {
-        div { class: "border-b border-gray-200 py-2 text-base font-bold leading-tight",
-            Link {
-                class: "cursor-pointer hover:underline",
-                to: permalink,
-                onclick_only: true,
-                onclick: {
-                    let target = target.clone();
-                    move |_| crate::modal_history::open_modal(modal, target.clone())
-                },
-                {crate::render::render_inline(&target.name, ctx)}
+        div { class: "flex items-center gap-2 py-2",
+            div { class: "min-w-0 flex-1 text-base font-bold leading-tight",
+                Link {
+                    class: "cursor-pointer hover:underline",
+                    to: permalink,
+                    onclick_only: true,
+                    onclick: {
+                        let target = target.clone();
+                        move |_| crate::modal_history::open_modal(modal, target.clone())
+                    },
+                    {crate::render::render_inline(&target.name, ctx)}
+                }
+                {kind_source_tags(kind, &target.source, &lib)}
             }
-            {kind_source_tags(kind, &target.source, &lib)}
+            button {
+                class: if pinned {
+                    "shrink-0 rounded-full bg-blue-600 px-1.75 py-0.5 text-xs text-white"
+                } else {
+                    "shrink-0 rounded-full border border-gray-300 bg-white px-1.75 py-0.5 text-xs text-gray-500 hover:border-gray-400"
+                },
+                title: if pinned { "Unpin" } else { "Pin" },
+                onclick: toggle,
+                if pinned { "📌" } else { "📍" }
+            }
         }
     }
 }
