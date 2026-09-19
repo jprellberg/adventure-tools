@@ -257,6 +257,27 @@ impl<'de> serde::Deserialize<'de> for EntityKind {
     }
 }
 
+/// An entity name as a route path segment. The router leaves '/' and '%'
+/// unescaped when it writes a segment, which would split a name such as
+/// "Armor (+1/+2)" into two segments (and misread a literal "%2F"), so both
+/// are escaped here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NameSegment(pub String);
+
+impl fmt::Display for NameSegment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0.replace('%', "%25").replace('/', "%2F"))
+    }
+}
+
+impl FromStr for NameSegment {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(NameSegment(s.to_string()))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Routable)]
 pub enum Route {
     #[layout(RootLayout)]
@@ -267,7 +288,7 @@ pub enum Route {
     EntityDetail {
         kind: EntityKind,
         source: String,
-        name: String,
+        name: NameSegment,
     },
     #[route("/books/:source/:..section")]
     Book { source: String, section: Vec<String> },
@@ -284,9 +305,9 @@ fn Home() -> Element {
 }
 
 #[component]
-fn EntityDetail(kind: EntityKind, source: String, name: String) -> Element {
+fn EntityDetail(kind: EntityKind, source: String, name: NameSegment) -> Element {
     rsx! {
-        EntityDetailPage { kind, source, name }
+        EntityDetailPage { kind, source, name: name.0 }
     }
 }
 
@@ -313,6 +334,18 @@ mod tests {
     fn kind_table_follows_declaration_order() {
         for (i, (kind, _)) in KINDS.iter().enumerate() {
             assert_eq!(*kind as usize, i, "{kind:?} is out of order in KINDS");
+        }
+    }
+
+    #[test]
+    fn entity_names_survive_the_url() {
+        for name in ["Legendary Resistance (4/Day)", "a/b c?d#e%f", "100%2F", "Cloak"] {
+            let route = Route::EntityDetail {
+                kind: EntityKind::Items,
+                source: "XDMG".into(),
+                name: NameSegment(name.into()),
+            };
+            assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{name}");
         }
     }
 

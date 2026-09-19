@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use crate::data::{is_base_source, Library};
 use crate::pins::{is_pinned, toggle_pin, PinsSignal};
 use crate::render::RenderCtx;
-use crate::routes::{EntityKind, Route};
+use crate::routes::{EntityKind, NameSegment, Route};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
 use crate::{EntityTarget, HoverSignal, ModalSignal};
@@ -60,7 +60,7 @@ pub fn title_link(kind: EntityKind, source: &str, name: &str, ctx: RenderCtx) ->
     let to = Route::EntityDetail {
         kind,
         source: target.source.clone(),
-        name: target.name.clone(),
+        name: NameSegment(target.name.clone()),
     };
     let modal = ctx.modal;
     rsx! {

@@ -389,7 +389,7 @@ fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ct
     let permalink = crate::routes::Route::EntityDetail {
         kind,
         source: target.source.clone(),
-        name: target.name.clone(),
+        name: crate::routes::NameSegment(target.name.clone()),
     };
 
     let modal = ctx.modal;
