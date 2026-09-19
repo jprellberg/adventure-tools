@@ -128,7 +128,7 @@ pub fn BookPage(source: String, section: Vec<String>) -> Element {
 
     rsx! {
         div { class: "mx-auto flex w-full max-w-[90rem] flex-col items-start justify-center gap-4 lg:flex-row",
-            nav { class: "sticky top-20 z-10 flex max-h-[35dvh] w-full shrink-0 flex-col bg-white lg:h-[calc(100dvh-6rem)] lg:max-h-none lg:w-72",
+            nav { class: "flex w-full shrink-0 flex-col bg-white lg:sticky lg:top-20 lg:z-10 lg:h-[calc(100dvh-6rem)] lg:w-72",
                 h2 { class: "p-2 text-base font-bold leading-tight",
                     "{title}"
                     {kind_source_tags(EntityKind::Books, &source, &lib)}
