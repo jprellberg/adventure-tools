@@ -733,7 +733,7 @@ fn render_statblock_ref(o: &Map<String, Value>, ctx: RenderCtx) -> Element {
             ..ctx
         };
         return rsx! {
-            div { class: "mb-2 rounded border border-gray-200 p-2",
+            div { class: "mb-2 rounded border border-gray-50 bg-gray-50 p-2",
                 {crate::statblock::render(&entity, kind, entity.name(), inner)}
             }
         };
@@ -752,7 +752,7 @@ fn render_statblock_inline(o: &Map<String, Value>, ctx: RenderCtx) -> Element {
         .and_then(|d| serde_json::from_value::<crate::model::Monster>(d).ok());
     match monster {
         Some(m) => rsx! {
-            div { class: "mb-1.5 rounded border border-gray-200 p-2",
+            div { class: "mb-1.5 rounded border border-gray-50 bg-gray-50 p-2",
                 h5 { class: "font-bold", "{m.name}" }
                 {crate::statblock::render_monster_body(&m, ctx.with_depth(2))}
             }

@@ -193,7 +193,7 @@ pub fn EntityCard(
         "relative w-full overflow-x-hidden bg-white p-4".to_string()
     } else {
         format!(
-            "relative {} max-w-full shrink-0 overflow-y-auto overflow-x-hidden rounded border border-gray-200 bg-white p-2 shadow-sm",
+            "relative {} max-w-full shrink-0 overflow-y-auto overflow-x-hidden rounded border border-gray-50 bg-gray-50 p-2 shadow-sm",
             size.classes()
         )
     };
