@@ -58,49 +58,66 @@ fn SearchHeader() -> Element {
         }
     };
 
+    // Empties the search (Escape, or the clear button - there's no Escape
+    // key on a phone) and returns to the Home route.
+    let mut clear = move || {
+        search_input.set(String::new());
+        search_query.set(String::new());
+        debounce_generation.set(debounce_generation() + 1);
+        if !is_home {
+            nav.push(Route::Home {});
+        }
+    };
+
     rsx! {
         header { class: "fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 bg-white/95 px-4 py-4 backdrop-blur",
-            input {
-                class: "min-w-0 max-w-xl flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm outline-none focus:border-gray-400",
-                r#type: "search",
-                placeholder: "Search the reference database…",
-                value: "{search_input}",
-                autofocus: true,
-                onmounted: move |evt| input_el.set(Some(evt.data())),
-                oninput: move |evt| {
-                    let value = evt.value();
-                    search_input.set(value.clone());
-                    if !is_home {
-                        nav.push(Route::Home {});
-                    }
-                    let generation = debounce_generation() + 1;
-                    debounce_generation.set(generation);
-                    spawn(async move {
-                        gloo_timers::future::TimeoutFuture::new(SEARCH_DEBOUNCE_MS).await;
-                        if debounce_generation() == generation {
-                            search_query.set(value);
-                        }
-                    });
-                },
-                onkeydown: move |evt| {
-                    if evt.key() == Key::Escape {
-                        // The modal overlay's own key handler only fires while
-                        // it holds focus; this input aggressively re-steals
-                        // focus on blur (see `refocus`), so it - not the
-                        // overlay - is the reliable place to catch Escape.
-                        if modal.0.read().is_some() {
-                            close_modal(modal);
-                            return;
-                        }
-                        search_input.set(String::new());
-                        search_query.set(String::new());
-                        debounce_generation.set(debounce_generation() + 1);
+            div { class: "relative min-w-0 max-w-xl flex-1",
+                input {
+                    class: "w-full rounded-full border border-gray-300 py-2 pl-4 pr-10 text-sm outline-none focus:border-gray-400 [&::-webkit-search-cancel-button]:appearance-none",
+                    r#type: "search",
+                    placeholder: "Search the reference database…",
+                    value: "{search_input}",
+                    autofocus: true,
+                    onmounted: move |evt| input_el.set(Some(evt.data())),
+                    oninput: move |evt| {
+                        let value = evt.value();
+                        search_input.set(value.clone());
                         if !is_home {
                             nav.push(Route::Home {});
                         }
+                        let generation = debounce_generation() + 1;
+                        debounce_generation.set(generation);
+                        spawn(async move {
+                            gloo_timers::future::TimeoutFuture::new(SEARCH_DEBOUNCE_MS).await;
+                            if debounce_generation() == generation {
+                                search_query.set(value);
+                            }
+                        });
+                    },
+                    onkeydown: move |evt| {
+                        if evt.key() == Key::Escape {
+                            // The modal overlay's own key handler only fires while
+                            // it holds focus; this input aggressively re-steals
+                            // focus on blur (see `refocus`), so it - not the
+                            // overlay - is the reliable place to catch Escape.
+                            if modal.0.read().is_some() {
+                                close_modal(modal);
+                                return;
+                            }
+                            clear();
+                        }
+                    },
+                    onblur: refocus,
+                }
+                if !search_input.read().is_empty() {
+                    button {
+                        class: "absolute inset-y-0 right-1 my-auto h-8 w-8 rounded-full text-lg leading-none text-gray-400 hover:text-gray-600",
+                        title: "Clear search",
+                        aria_label: "Clear search",
+                        onclick: move |_| clear(),
+                        "✕"
                     }
-                },
-                onblur: refocus,
+                }
             }
             button {
                 class: "shrink-0 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 hover:border-gray-400",
