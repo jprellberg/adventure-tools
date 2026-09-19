@@ -160,7 +160,7 @@ fn HoverPopupOverlay() -> Element {
     rsx! {
         div {
             class: "fixed z-[300] w-80 max-h-[70vh] overflow-y-auto rounded border border-gray-300 bg-white p-2 text-xs shadow-lg",
-            style: "left: min({x}px, calc(100vw - 336px)); top: min({y + 16.0}px, calc(100vh - 300px));",
+            style: "pointer-events: none; left: min({x}px, calc(100vw - 336px)); top: min({y + 16.0}px, calc(100vh - 300px));",
             {render_entity_preview(target.kind, &target.name, &target.source, ctx)}
         }
     }
