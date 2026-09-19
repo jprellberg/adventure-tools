@@ -711,12 +711,35 @@ fn render_other(v: &Value, ctx: RenderCtx) -> Element {
 }
 
 /// `{ type: "statblock", tag, name, source }` embeds another entity; shown
-/// as a link to it (its card opens in the modal).
+/// as its card body in place, or - for an entity the library doesn't have,
+/// or one that embeds itself - as a link to it.
 fn render_statblock_ref(o: &Map<String, Value>, ctx: RenderCtx) -> Element {
     let tag = str_at(o, "tag").unwrap_or("creature");
     let name = str_at(o, "name").unwrap_or("");
     let source = str_at(o, "source").unwrap_or("");
     let display = str_at(o, "displayName").unwrap_or(name);
+    let embedded = inline::tag_kind(tag)
+        .and_then(|kind| {
+            let found =
+                ctx.library
+                    .find_for_ruleset(kind, Some(source).filter(|s| !s.is_empty()), name, ctx.use_2024)?;
+            Some((kind, found))
+        })
+        .filter(|(kind, found)| {
+            !ctx.current
+                .is_some_and(|(k, s, n)| k == *kind && s == found.source() && n == found.name())
+        });
+    if let Some((kind, entity)) = embedded {
+        let inner = RenderCtx {
+            current: Some((kind, entity.source(), entity.name())),
+            ..ctx
+        };
+        return rsx! {
+            div { class: "mb-2 rounded border border-gray-200 p-2",
+                {crate::statblock::render(&entity, kind, entity.name(), inner)}
+            }
+        };
+    }
     rsx! {
         p { class: "mb-1.5 leading-snug", {render_inline(&format!("{{@{tag} {name}|{source}|{display}}}"), ctx)} }
     }

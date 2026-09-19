@@ -193,7 +193,7 @@ fn render_tag(name: &str, args: &[String], ctx: RenderCtx) -> Element {
 }
 
 /// The entity kind a `{@tag Name|Source|Display}` link points at.
-fn tag_kind(tag: &str) -> Option<EntityKind> {
+pub(super) fn tag_kind(tag: &str) -> Option<EntityKind> {
     Some(match tag {
         "creature" => EntityKind::Bestiary,
         "spell" => EntityKind::Spells,
@@ -223,6 +223,9 @@ fn tag_kind(tag: &str) -> Option<EntityKind> {
         "deck" => EntityKind::Decks,
         "legroup" => EntityKind::LegendaryGroups,
         "crochet" => EntityKind::CrochetPatterns,
+        "subclass" => EntityKind::Subclasses,
+        "deity" => EntityKind::Deities,
+        "card" => EntityKind::Cards,
         _ => return None,
     })
 }
