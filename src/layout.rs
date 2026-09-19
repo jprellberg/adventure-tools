@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use dioxus::prelude::*;
 
 use crate::card::source_badge_classes;
@@ -88,18 +86,33 @@ fn SearchHeader() -> Element {
             current_detail(&route, library.read().as_deref()),
         ));
     };
-    let mut input_el: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
     // Bumped on every keystroke so a pending debounce task can tell it's
     // been superseded and skip committing its now-stale value.
     let mut debounce_generation = use_signal(|| 0u32);
 
-    let refocus = move |_| {
-        if let Some(el) = input_el.read().clone() {
-            spawn(async move {
-                let _ = el.set_focus(true).await;
-            });
-        }
-    };
+    // Instead of holding focus (which makes text unselectable), the search
+    // input takes it back when the user types anywhere outside another field.
+    use_hook(|| {
+        document::eval(
+            r#"
+            if (!window.__searchTypeAhead) {
+                window.__searchTypeAhead = true;
+                document.addEventListener("keydown", (e) => {
+                    const input = document.getElementById("search-input");
+                    const t = e.target;
+                    if (!input || t === input || e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (t.closest && t.closest("input, textarea, select, [contenteditable]")) return;
+                    if (e.key === "Escape") {
+                        input.focus();
+                        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+                    } else if (e.key.length === 1 && e.key !== " ") {
+                        input.focus();
+                    }
+                });
+            }
+            "#,
+        );
+    });
 
     // Empties the search (Escape, or the clear button - there's no Escape
     // key on a phone) and leaves the results for the view they were opened
@@ -158,8 +171,8 @@ fn SearchHeader() -> Element {
                             r#type: "search",
                             placeholder: "Search the reference database…",
                             value: "{search_input}",
+                            id: "search-input",
                             autofocus: true,
-                            onmounted: move |evt| input_el.set(Some(evt.data())),
                             oninput: move |evt| {
                                 let value = evt.value();
                                 search_input.set(value.clone());
@@ -176,8 +189,8 @@ fn SearchHeader() -> Element {
                                 });
                             },
                             onkeydown: move |evt| {
-                                // This input aggressively re-steals focus on blur (see
-                                // `refocus`), so it is the reliable place to catch Escape.
+                                // Escape pressed elsewhere is forwarded here by the
+                                // type-ahead listener above.
                                 if evt.key() == Key::Escape {
                                     if filters_open() {
                                         filters_open.set(false);
@@ -186,7 +199,6 @@ fn SearchHeader() -> Element {
                                     clear();
                                 }
                             },
-                            onblur: refocus,
                         }
                         if !search_input.read().is_empty() {
                             button {
