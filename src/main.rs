@@ -133,7 +133,11 @@ fn App() -> Element {
                 "Failed to load data: {err}"
             }
         } else if loading() {
-            div { class: "flex h-screen flex-col items-center justify-center gap-4 px-8 text-center",
+            // Inline layout styles: the stylesheet is injected at runtime, so
+            // without them the text flashes unstyled in the corner until it loads.
+            div {
+                class: "flex h-screen flex-col items-center justify-center gap-4 px-8 text-center",
+                style: "display:flex;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:0 2rem;text-align:center;color:#6b7280;font-family:sans-serif",
                 div { class: "h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-600" }
                 p { class: "text-gray-500", "{progress}" }
             }
