@@ -133,7 +133,7 @@ fn App() -> Element {
                 "Failed to load data: {err}"
             }
         } else if loading() {
-            div { class: "flex h-screen flex-col items-center justify-center gap-4",
+            div { class: "flex h-screen flex-col items-center justify-center gap-4 px-8 text-center",
                 div { class: "h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-600" }
                 p { class: "text-gray-500", "{progress}" }
             }

@@ -21,7 +21,7 @@ pub fn RootLayout() -> Element {
     crate::pins::mirror_in_url(use_context::<crate::pins::PinsSignal>());
 
     rsx! {
-        div { class: "min-h-screen min-w-[24rem] bg-white",
+        div { class: "min-h-screen min-w-[22rem] bg-white",
             SearchHeader {}
             main { class: "px-4 pb-4 pt-20", Outlet::<Route> {} }
             HoverPopupOverlay {}
@@ -59,9 +59,9 @@ fn SearchHeader() -> Element {
     };
 
     rsx! {
-        header { class: "fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 bg-white/95 py-4 backdrop-blur",
+        header { class: "fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 bg-white/95 px-4 py-4 backdrop-blur",
             input {
-                class: "w-full max-w-xl rounded-full border border-gray-300 px-4 py-2 text-sm outline-none focus:border-gray-400",
+                class: "min-w-0 max-w-xl flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm outline-none focus:border-gray-400",
                 r#type: "search",
                 placeholder: "Search the reference database…",
                 value: "{search_input}",
@@ -106,14 +106,15 @@ fn SearchHeader() -> Element {
                 class: "shrink-0 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 hover:border-gray-400",
                 title: "Switch between 2014 and 2024 core rulebooks",
                 onclick: move |_| rules.set(Use2024Rules(!rules().0)),
-                if rules().0 { "2024 rules" } else { "2014 rules" }
+                if rules().0 { "2024" } else { "2014" }
             }
             if update_available().0 {
                 button {
-                    class: "fixed right-4 top-4 rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100",
+                    class: "shrink-0 rounded-full border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-700 hover:bg-blue-100",
                     title: "A data update is available - click to download it",
+                    aria_label: "Update data",
                     onclick: move |_| resync.send(()),
-                    "⭯ Update"
+                    "⭯"
                 }
             }
         }

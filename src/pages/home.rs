@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::card::{CardSize, EntityCard};
+use crate::card::{CardSize, EntityCard, EntityRow};
 use crate::data::{excluded_by_ruleset, Library};
 use crate::pins::PinsSignal;
 use crate::routes::EntityKind;
@@ -84,6 +84,15 @@ fn results_grid(hits: &[(EntityKind, String, String)], q: &str, viewport: Viewpo
     if hits.is_empty() {
         return rsx! {
             p { class: "mt-32 text-center text-gray-400", "No results for \"{q}\"." }
+        };
+    }
+    if CardSize::single_column(viewport) {
+        return rsx! {
+            div { class: "mx-auto w-full max-w-xl",
+                for (kind , source , name) in hits.iter().cloned() {
+                    EntityRow { key: "{kind}|{source}|{name}", kind, source, name }
+                }
+            }
         };
     }
     let size = CardSize::fitting(hits.len(), viewport);

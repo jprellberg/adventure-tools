@@ -10,10 +10,10 @@ use dioxus::prelude::*;
 use crate::data::{is_base_source, Library};
 use crate::pins::{is_pinned, toggle_pin, PinsSignal};
 use crate::render::RenderCtx;
-use crate::routes::EntityKind;
+use crate::routes::{EntityKind, Route};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
-use crate::{HoverSignal, ModalSignal};
+use crate::{EntityTarget, HoverSignal, ModalSignal};
 
 /// The kind + source tag pair shown inline after an entity's title; they
 /// wrap along with the title text. The three core rulebooks get
@@ -92,6 +92,13 @@ impl CardSize {
         grid_rows * (height + GAP) - GAP <= viewport.height - PAGE_MARGIN_Y
     }
 
+    /// Whether the window is too narrow to lay out two base cards side by
+    /// side. Unmeasured (zero-width) windows don't count.
+    pub fn single_column(viewport: Viewport) -> bool {
+        let two_cards = 2.0 * CARD_WIDTH + GAP;
+        viewport.width > 0.0 && viewport.width - PAGE_MARGIN_X < two_cards
+    }
+
     /// The largest size at which all `count` cards are on screen without
     /// scrolling, or `Base` when none is.
     pub fn fitting(count: usize, viewport: Viewport) -> Self {
@@ -99,6 +106,50 @@ impl CardSize {
             .into_iter()
             .find(|size| size.fits(count, viewport))
             .unwrap_or(CardSize::Base)
+    }
+}
+
+/// A search result reduced to one line - the title and its tags - for
+/// single-column windows, where full cards would leave next to nothing of
+/// the result list visible (especially with the on-screen keyboard open).
+/// Clicking the title maximizes the entity like a card's title does.
+#[component]
+pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
+    let library = use_context::<LibrarySignal>();
+    let modal = use_context::<ModalSignal>();
+    let hover = use_context::<HoverSignal>();
+    let Some(lib) = library.read().clone() else {
+        return rsx! {};
+    };
+    let Some(entity) = lib.find_ci(kind, Some(&source), &name) else {
+        return rsx! {};
+    };
+    let target = EntityTarget {
+        kind,
+        source: entity.source().to_string(),
+        name: entity.name().to_string(),
+    };
+    let permalink = Route::EntityDetail {
+        kind,
+        source: target.source.clone(),
+        name: target.name.clone(),
+    };
+    let ctx = RenderCtx::new(&lib, modal, hover);
+
+    rsx! {
+        div { class: "border-b border-gray-200 py-2 text-base font-bold leading-tight",
+            Link {
+                class: "cursor-pointer hover:underline",
+                to: permalink,
+                onclick_only: true,
+                onclick: {
+                    let target = target.clone();
+                    move |_| crate::modal_history::open_modal(modal, target.clone())
+                },
+                {crate::render::render_inline(&target.name, ctx)}
+            }
+            {kind_source_tags(kind, &target.source, &lib)}
+        }
     }
 }
 
