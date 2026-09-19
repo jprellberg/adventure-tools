@@ -181,10 +181,10 @@ fn contents_list(toc: &[TocNode], source: &str, selected: &[usize], mut expanded
                 li { key: "{i}",
                     div { class: "flex items-start",
                         if chapter.children.is_empty() {
-                            span { class: "w-6 shrink-0" }
+                            span { class: "w-8 shrink-0" }
                         } else {
                             button {
-                                class: "w-6 shrink-0 py-1 text-gray-400 hover:text-gray-700",
+                                class: "group flex h-7 w-8 shrink-0 items-center justify-center",
                                 title: if expanded.read().contains(&i) { "Collapse" } else { "Expand" },
                                 aria_expanded: expanded.read().contains(&i),
                                 onclick: move |_| {
@@ -193,10 +193,12 @@ fn contents_list(toc: &[TocNode], source: &str, selected: &[usize], mut expanded
                                         open.insert(i);
                                     }
                                 },
-                                if expanded.read().contains(&i) {
-                                    "▾"
-                                } else {
-                                    "▸"
+                                span { class: "flex h-5 w-5 items-center justify-center rounded-sm border border-gray-400 font-mono text-sm leading-none text-gray-600 group-hover:border-gray-700 group-hover:text-gray-900",
+                                    if expanded.read().contains(&i) {
+                                        "−"
+                                    } else {
+                                        "+"
+                                    }
                                 }
                             }
                         }
@@ -207,7 +209,7 @@ fn contents_list(toc: &[TocNode], source: &str, selected: &[usize], mut expanded
                         }
                     }
                     if expanded.read().contains(&i) {
-                        ul { class: "ml-9",
+                        ul { class: "ml-11",
                             for (j , section) in chapter.children.iter().enumerate() {
                                 li { key: "{j}",
                                     Link {
