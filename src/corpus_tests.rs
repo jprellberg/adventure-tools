@@ -693,8 +693,8 @@ fn known_fields(kind: EntityKind) -> &'static [&'static str] {
         EntityKind::ItemMasteries => &[],
         EntityKind::Skills => &["ability"],
         EntityKind::Senses => &[],
-        EntityKind::Tables => &["path"],
-        EntityKind::Rules => &["id", "path"],
+        EntityKind::Tables => &["path", "chapter", "section"],
+        EntityKind::Rules => &["id", "path", "chapter", "section"],
         EntityKind::Books => &[
             "id",
             "group",

@@ -71,10 +71,11 @@ pub fn render(kind: EntityKind, o: &Other, header: Element, ctx: RenderCtx) -> E
         return class::render_subclass(o, header, ctx);
     }
     let layout = layout_for(kind, o);
+    let subtitle = book_path(kind, o, &layout.subtitle, ctx).unwrap_or_else(|| subtitle(&layout.subtitle, ctx));
     rsx! {
         div { class: "text-sm",
             {header}
-            {subtitle(&layout.subtitle, ctx)}
+            {subtitle}
             for (label , text) in layout.lines {
                 {prop_line(label, &text, ctx)}
             }
@@ -99,6 +100,41 @@ pub fn render(kind: EntityKind, o: &Other, header: Element, ctx: RenderCtx) -> E
             }
         }
     }
+}
+
+/// The subtitle of a section or table taken from a book - "Book title ›
+/// Chapter › ..." - with the title of the book linking to its page and the
+/// rest to the chapter or section the entity sits in.
+fn book_path(kind: EntityKind, o: &Other, path: &str, ctx: RenderCtx) -> Option<Element> {
+    if !matches!(kind, EntityKind::Rules | EntityKind::Tables) {
+        return None;
+    }
+    let book = ctx.library.book(&o.source)?;
+    let rest = path.strip_prefix(book.name.as_str())?.strip_prefix(" › ");
+    let index = |key| i64_at(&o.extra, key).and_then(|i| usize::try_from(i).ok());
+    let place: Vec<String> = index("chapter")
+        .into_iter()
+        .chain(index("section"))
+        .map(|i| i.to_string())
+        .collect();
+    let class = "text-blue-700 underline decoration-dotted underline-offset-2 hover:decoration-solid";
+    let book_route = Route::Book {
+        source: o.source.clone(),
+        section: Vec::new(),
+    };
+    let place_route = Route::Book {
+        source: o.source.clone(),
+        section: place,
+    };
+    Some(rsx! {
+        p { class: "mb-1 italic",
+            Link { class, to: book_route, "{book.name}" }
+            if let Some(rest) = rest {
+                " › "
+                Link { class, to: place_route, "{rest}" }
+            }
+        }
+    })
 }
 
 fn join(list: Vec<&str>) -> String {

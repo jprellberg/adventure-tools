@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::card::kind_source_tags;
 use crate::data;
+use crate::data::books::{block_name, sections};
 use crate::model::Entry;
 use crate::render::{render_entry, RenderCtx};
 use crate::routes::{EntityKind, Route};
@@ -26,35 +27,6 @@ use crate::HoverSignal;
 struct TocNode {
     name: String,
     children: Vec<TocNode>,
-}
-
-fn is_block(node: &Value) -> bool {
-    matches!(node.get("type").and_then(Value::as_str), Some("entries" | "section"))
-}
-
-fn block_name(block: &Value) -> Option<&str> {
-    block
-        .get("name")
-        .and_then(Value::as_str)
-        .filter(|name| !name.trim().is_empty())
-}
-
-/// The named blocks inside `block`, looking through unnamed ones.
-fn sections(block: &Value) -> Vec<&Value> {
-    let mut found = Vec::new();
-    collect_sections(block, &mut found);
-    found
-}
-
-fn collect_sections<'a>(block: &'a Value, found: &mut Vec<&'a Value>) {
-    let entries = block.get("entries").and_then(Value::as_array).into_iter().flatten();
-    for entry in entries.filter(|e| is_block(e)) {
-        if block_name(entry).is_some() {
-            found.push(entry);
-        } else {
-            collect_sections(entry, found);
-        }
-    }
 }
 
 fn toc_node(block: &Value, with_sections: bool) -> TocNode {

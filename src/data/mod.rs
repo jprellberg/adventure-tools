@@ -1,4 +1,4 @@
-mod books;
+pub mod books;
 pub mod db;
 mod github;
 pub mod loader;
