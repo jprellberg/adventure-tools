@@ -363,7 +363,7 @@ pub async fn load_book(id: &str) -> Result<Vec<Value>, String> {
     }
     let raw = cached.ok_or_else(|| format!("{path} missing from the local data cache"))?;
     let mut file: Value = serde_json::from_str(&raw).map_err(|e| format!("parsing {path}: {e}"))?;
-    Ok(loader::take_array(&mut file, "data"))
+    Ok(loader::take_chapters(&mut file))
 }
 
 /// Downloads what changed in the latest `data/` tree and prepares the

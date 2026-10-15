@@ -62,6 +62,16 @@ pub(super) fn take_array(file: &mut Value, key: &str) -> Vec<Value> {
     }
 }
 
+/// Takes the chapter list out of a book or adventure file: the `data` of
+/// the single entry of its `bookData` or `adventureData` array.
+pub(super) fn take_chapters(file: &mut Value) -> Vec<Value> {
+    ["bookData", "adventureData"]
+        .into_iter()
+        .find_map(|key| take_array(file, key).into_iter().next())
+        .map(|mut book| take_array(&mut book, "data"))
+        .unwrap_or_default()
+}
+
 /// Deserializes every resolved entity into `T`, skipping (rather than
 /// failing the whole kind on) any single entry a `_copy`/`_mod` merge left
 /// in a shape that doesn't fit the typed struct.
@@ -423,7 +433,7 @@ async fn load_book_content(src: &impl DataSource) -> Result<(Vec<Other>, Vec<Oth
                 continue;
             };
             let mut file = src.value(&format!("{dir}/{dir}-{}.json", id.to_lowercase())).await?;
-            let content = books::extract(source, name, &take_array(&mut file, "data"), with_rules);
+            let content = books::extract(source, name, &take_chapters(&mut file), with_rules);
             rules.extend(from_values::<Other>(content.rules));
             tables.extend(from_values::<Other>(content.tables));
         }

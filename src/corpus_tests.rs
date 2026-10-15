@@ -813,6 +813,14 @@ fn search_ranks_and_caps_results() {
         .iter()
         .all(|h| !crate::data::excluded_by_ruleset(h.entity.source(), true)));
 
+    // Book rules are found by their name.
+    let hits = crate::search::search(library(), "conditions", &Default::default());
+    assert!(
+        hits.first()
+            .is_some_and(|h| h.kind == EntityKind::Rules && h.entity.name() == "Conditions"),
+        "the XPHB Conditions rule ranks first"
+    );
+
     // Keywords: a subclass is found through its class name.
     let hits = crate::search::search(library(), "champion fighter", &Default::default());
     assert!(hits.iter().any(|h| h.entity.name() == "Champion"));
