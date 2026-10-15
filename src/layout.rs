@@ -154,7 +154,7 @@ fn SearchHeader() -> Element {
         if filters_open() {
             div { class: "fixed inset-0 z-30 bg-black/10", onclick: move |_| filters_open.set(false) }
         }
-        header { class: "fixed inset-x-0 top-0 z-40 flex items-start justify-center gap-2 px-4 py-2.5 {header_state}",
+        header { class: "fixed inset-x-0 top-0 z-40 flex items-start justify-center gap-1 px-4 py-2.5 {header_state}",
             div { class: "pointer-events-auto min-w-0 max-w-xl flex-1 rounded-2xl border p-1.5 {card_state}",
                 div { class: "flex items-center gap-2",
                     div { class: "flex shrink-0 overflow-hidden rounded-full border border-gray-300",
