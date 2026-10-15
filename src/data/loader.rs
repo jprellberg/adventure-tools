@@ -171,10 +171,28 @@ async fn load_classes(
     let subclasses: Vec<Other> = from_values(resolve_copies_by(subclasses, subclass_key));
     Ok((
         from_values(resolve_copies(classes)),
-        from_values(resolve_copies_by(class_features, class_feature_key)),
+        disambiguate_features(from_values(resolve_copies_by(class_features, class_feature_key))),
         subclasses,
-        from_values(resolve_copies_by(subclass_features, subclass_feature_key)),
+        disambiguate_features(from_values(resolve_copies_by(subclass_features, subclass_feature_key))),
     ))
+}
+
+/// Gives every feature whose name and source it shares with another one a
+/// unique name naming its (sub)class and level, since entities are keyed
+/// by name and source.
+fn disambiguate_features(mut features: Vec<ClassFeature>) -> Vec<ClassFeature> {
+    let key = |f: &ClassFeature| (f.name.to_lowercase(), f.source.to_lowercase());
+    let mut counts: HashMap<(String, String), usize> = HashMap::new();
+    for feature in &features {
+        *counts.entry(key(feature)).or_default() += 1;
+    }
+    for feature in &mut features {
+        if counts[&key(feature)] > 1 {
+            let owner = feature.subclass_short_name.as_deref().unwrap_or(&feature.class_name);
+            feature.unique_name = Some(format!("{} ({owner} {})", feature.name, feature.level));
+        }
+    }
+    features
 }
 
 /// A subrace has no `name` of its own worth searching by; like 5etools it is

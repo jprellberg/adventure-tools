@@ -35,6 +35,18 @@ pub struct ClassFeature {
     pub subclass_source: Option<String>,
     #[serde(default, deserialize_with = "crate::model::serde_util::null_as_default")]
     pub entries: Vec<Entry>,
+    /// The name the feature is searched, addressed and titled by when
+    /// `name` alone is shared with other features of its source (e.g.
+    /// "Ability Score Improvement (Bard 4)"); set by the loader.
+    #[serde(default, rename = "uniqueName", skip_serializing_if = "Option::is_none")]
+    pub unique_name: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl ClassFeature {
+    /// The name that identifies the feature as an entity of its own.
+    pub fn title(&self) -> &str {
+        self.unique_name.as_deref().unwrap_or(&self.name)
+    }
 }

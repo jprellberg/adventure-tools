@@ -19,6 +19,8 @@ pub enum EntityKind {
     Items,
     Classes,
     Subclasses,
+    ClassFeatures,
+    SubclassFeatures,
     Races,
     Backgrounds,
     Feats,
@@ -66,7 +68,7 @@ const fn info(slug: &'static str, label: &'static str, badge: &'static str) -> K
     KindInfo { slug, label, badge }
 }
 
-const KINDS: [(EntityKind, KindInfo); 35] = [
+const KINDS: [(EntityKind, KindInfo); 37] = [
     (
         EntityKind::Bestiary,
         info("bestiary", "Bestiary", "bg-red-50 text-red-700"),
@@ -83,6 +85,14 @@ const KINDS: [(EntityKind, KindInfo); 35] = [
     (
         EntityKind::Subclasses,
         info("subclasses", "Subclasses", "bg-sky-50 text-sky-700"),
+    ),
+    (
+        EntityKind::ClassFeatures,
+        info("classfeatures", "Class Features", "bg-blue-50 text-blue-900"),
+    ),
+    (
+        EntityKind::SubclassFeatures,
+        info("subclassfeatures", "Subclass Features", "bg-sky-50 text-sky-900"),
     ),
     (EntityKind::Races, info("races", "Races", "bg-green-50 text-green-700")),
     (

@@ -548,3 +548,50 @@ fn spell_lines(label: &str, v: &Value, out: &mut Vec<String>) {
         }
     }
 }
+
+/// A class or subclass feature as an entity of its own: the (sub)class and
+/// level that grant it, then its text.
+pub fn render_feature_card(feature: &ClassFeature, header: Element, ctx: RenderCtx) -> Element {
+    let class = format!("{{@class {}|{}}}", feature.class_name, feature.class_source);
+    let owner = match (&feature.subclass_short_name, &feature.subclass_source) {
+        (Some(short_name), Some(source)) => {
+            let subclass = ctx.library.entities_of(EntityKind::Subclasses).find(|s| {
+                s.source().eq_ignore_ascii_case(source)
+                    && str_at(s.extra(), "shortName").is_some_and(|n| n.eq_ignore_ascii_case(short_name))
+                    && str_at(s.extra(), "className").is_some_and(|c| c.eq_ignore_ascii_case(&feature.class_name))
+                    && str_at(s.extra(), "classSource").is_some_and(|c| c.eq_ignore_ascii_case(&feature.class_source))
+            });
+            match subclass {
+                Some(s) => format!("{{@subclass {}|||{}}} ({class})", s.name(), s.source()),
+                None => format!("{short_name} ({class})"),
+            }
+        }
+        _ => class,
+    };
+    let optional = if feature.extra.get("isClassFeatureVariant") == Some(&Value::Bool(true)) {
+        " (optional)"
+    } else {
+        ""
+    };
+    let consumes = feature
+        .extra
+        .get("consumes")
+        .and_then(Value::as_object)
+        .map(|c| {
+            format!(
+                "{} {}",
+                i64_at(c, "amount").unwrap_or(1),
+                str_at(c, "name").unwrap_or("")
+            )
+        })
+        .unwrap_or_default();
+    rsx! {
+        div { class: "text-sm",
+            {header}
+            {subtitle(&format!("{owner} feature, level {}{optional}", feature.level), ctx)}
+            {prop_line("Consumes:", &consumes, ctx)}
+            {divider()}
+            {render_entries(&feature.entries, ctx)}
+        }
+    }
+}

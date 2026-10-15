@@ -74,6 +74,8 @@ pub enum EntityRef<'a> {
     Spell(&'a Spell),
     Item(&'a Item),
     Class(&'a Class),
+    /// A class or subclass feature.
+    Feature(&'a ClassFeature),
     Race(&'a Race),
     Background(&'a Background),
     Feat(&'a Feat),
@@ -91,6 +93,7 @@ impl<'a> EntityRef<'a> {
             EntityRef::Spell(e) => &e.name,
             EntityRef::Item(e) => &e.name,
             EntityRef::Class(e) => &e.name,
+            EntityRef::Feature(e) => e.title(),
             EntityRef::Race(e) => &e.name,
             EntityRef::Background(e) => &e.name,
             EntityRef::Feat(e) => &e.name,
@@ -108,6 +111,7 @@ impl<'a> EntityRef<'a> {
             EntityRef::Spell(e) => &e.source,
             EntityRef::Item(e) => &e.source,
             EntityRef::Class(e) => &e.source,
+            EntityRef::Feature(e) => &e.source,
             EntityRef::Race(e) => &e.source,
             EntityRef::Background(e) => &e.source,
             EntityRef::Feat(e) => &e.source,
@@ -126,6 +130,7 @@ impl<'a> EntityRef<'a> {
             EntityRef::Spell(e) => &e.extra,
             EntityRef::Item(e) => &e.extra,
             EntityRef::Class(e) => &e.extra,
+            EntityRef::Feature(e) => &e.extra,
             EntityRef::Race(e) => &e.extra,
             EntityRef::Background(e) => &e.extra,
             EntityRef::Feat(e) => &e.extra,
@@ -139,7 +144,7 @@ impl<'a> EntityRef<'a> {
 
     /// Extra words search matches besides the name: alternative names
     /// (`alias`, `altNames`) and, for entities that belong to another
-    /// (subclasses, subraces, cards), the owner's name.
+    /// (subclasses, subraces, cards, class features), the owner's name.
     pub fn keywords(&self) -> Vec<&'a str> {
         let extra = self.extra();
         let mut words = Vec::new();
@@ -152,6 +157,10 @@ impl<'a> EntityRef<'a> {
             if let Some(Value::String(s)) = extra.get(key) {
                 words.push(s);
             }
+        }
+        if let EntityRef::Feature(f) = self {
+            words.push(&f.class_name);
+            words.extend(f.subclass_short_name.as_deref());
         }
         words
     }
@@ -187,6 +196,8 @@ impl Library {
             EntityKind::Spells => EntityRef::Spell(self.spells.get(position)?),
             EntityKind::Items => EntityRef::Item(self.items.get(position)?),
             EntityKind::Classes => EntityRef::Class(self.classes.get(position)?),
+            EntityKind::ClassFeatures => EntityRef::Feature(self.class_features.get(position)?),
+            EntityKind::SubclassFeatures => EntityRef::Feature(self.subclass_features.get(position)?),
             EntityKind::Races => EntityRef::Race(self.races.get(position)?),
             EntityKind::Backgrounds => EntityRef::Background(self.backgrounds.get(position)?),
             EntityKind::Feats => EntityRef::Feat(self.feats.get(position)?),
@@ -204,6 +215,8 @@ impl Library {
             EntityKind::Spells => Box::new(self.spells.iter().map(EntityRef::Spell)),
             EntityKind::Items => Box::new(self.items.iter().map(EntityRef::Item)),
             EntityKind::Classes => Box::new(self.classes.iter().map(EntityRef::Class)),
+            EntityKind::ClassFeatures => Box::new(self.class_features.iter().map(EntityRef::Feature)),
+            EntityKind::SubclassFeatures => Box::new(self.subclass_features.iter().map(EntityRef::Feature)),
             EntityKind::Races => Box::new(self.races.iter().map(EntityRef::Race)),
             EntityKind::Backgrounds => Box::new(self.backgrounds.iter().map(EntityRef::Background)),
             EntityKind::Feats => Box::new(self.feats.iter().map(EntityRef::Feat)),

@@ -53,6 +53,8 @@ fn every_kind_loads() {
         (EntityKind::Items, 2500),
         (EntityKind::Classes, 30),
         (EntityKind::Subclasses, 200),
+        (EntityKind::ClassFeatures, 600),
+        (EntityKind::SubclassFeatures, 1400),
         (EntityKind::Races, 200),
         (EntityKind::Backgrounds, 150),
         (EntityKind::Feats, 300),
@@ -167,6 +169,7 @@ fn entity_json(entity: &EntityRef) -> Value {
         EntityRef::Spell(e) => serde_json::to_value(e),
         EntityRef::Item(e) => serde_json::to_value(e),
         EntityRef::Class(e) => serde_json::to_value(e),
+        EntityRef::Feature(e) => serde_json::to_value(e),
         EntityRef::Race(e) => serde_json::to_value(e),
         EntityRef::Background(e) => serde_json::to_value(e),
         EntityRef::Feat(e) => serde_json::to_value(e),
@@ -586,6 +589,18 @@ fn known_fields(kind: EntityKind) -> &'static [&'static str] {
             "duration",
             "hauntBonus",
         ],
+        EntityKind::ClassFeatures | EntityKind::SubclassFeatures => &[
+            "className",
+            "classSource",
+            "subclassShortName",
+            "subclassSource",
+            "level",
+            "uniqueName",
+            "isClassFeatureVariant",
+            "consumes",
+            "header",
+            "type",
+        ],
         EntityKind::Subclasses => &[
             "shortName",
             "className",
@@ -801,6 +816,24 @@ fn search_ranks_and_caps_results() {
     // Keywords: a subclass is found through its class name.
     let hits = crate::search::search(library(), "champion fighter", &Default::default());
     assert!(hits.iter().any(|h| h.entity.name() == "Champion"));
+
+    // Class and subclass features are entities of their own.
+    for (query, kind, name) in [
+        ("jack of all trades", EntityKind::ClassFeatures, "Jack of All Trades"),
+        ("unsettling words", EntityKind::SubclassFeatures, "Unsettling Words"),
+        ("eloquence unsettling", EntityKind::SubclassFeatures, "Unsettling Words"),
+        (
+            "ability score improvement bard",
+            EntityKind::ClassFeatures,
+            "Ability Score Improvement (Bard 4)",
+        ),
+    ] {
+        let hits = crate::search::search(library(), query, &Default::default());
+        assert!(
+            hits.iter().any(|h| h.kind == kind && h.entity.name() == name),
+            "{query} finds {name}"
+        );
+    }
 
     // Without words everything matches, alphabetically.
     let hits = crate::search::search(library(), "   ", &Default::default());

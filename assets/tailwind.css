@@ -52,12 +52,14 @@
     --color-sky-100: oklch(95.1% 0.026 236.824);
     --color-sky-700: oklch(50% 0.134 242.749);
     --color-sky-800: oklch(44.3% 0.11 240.79);
+    --color-sky-900: oklch(39.1% 0.09 240.876);
     --color-blue-50: oklch(97% 0.014 254.604);
     --color-blue-100: oklch(93.2% 0.032 255.585);
     --color-blue-300: oklch(80.9% 0.105 251.813);
     --color-blue-600: oklch(54.6% 0.245 262.881);
     --color-blue-700: oklch(48.8% 0.243 264.376);
     --color-blue-800: oklch(42.4% 0.199 265.638);
+    --color-blue-900: oklch(37.9% 0.146 265.522);
     --color-indigo-50: oklch(96.2% 0.018 272.314);
     --color-indigo-700: oklch(45.7% 0.24 277.023);
     --color-violet-50: oklch(96.9% 0.016 293.756);
@@ -914,6 +916,9 @@
   .text-blue-800 {
     color: var(--color-blue-800);
   }
+  .text-blue-900 {
+    color: var(--color-blue-900);
+  }
   .text-cyan-700 {
     color: var(--color-cyan-700);
   }
@@ -1000,6 +1005,9 @@
   }
   .text-sky-800 {
     color: var(--color-sky-800);
+  }
+  .text-sky-900 {
+    color: var(--color-sky-900);
   }
   .text-slate-600 {
     color: var(--color-slate-600);
