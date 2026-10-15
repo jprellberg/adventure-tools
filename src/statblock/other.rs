@@ -229,7 +229,7 @@ fn layout_for(kind: EntityKind, o: &Other) -> Layout {
             for (label, key) in [
                 ("Cultists:", "cultists"),
                 ("Goals:", "goal"),
-                ("Ability Score Adjustment:", "ability"),
+                ("Ability Score Adjustment:", "abilityEntry"),
                 ("Signature Spells:", "signatureSpells"),
             ] {
                 let text = match x.get(key) {

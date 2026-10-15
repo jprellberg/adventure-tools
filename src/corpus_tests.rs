@@ -481,6 +481,9 @@ fn known_fields(kind: EntityKind) -> &'static [&'static str] {
             "additionalSpells",
             "advancement",
             "isSidekick",
+            // The Weapon Mastery column of the class table shows the progression:
+            "itemMasteries",
+            "itemMasteriesProgression",
         ],
         EntityKind::Races => &[
             "size",
@@ -700,7 +703,7 @@ fn known_fields(kind: EntityKind) -> &'static [&'static str] {
             "noteCook",
             "miscTags",
         ],
-        EntityKind::CultsBoons => &["type", "cultists", "goal", "signatureSpells", "ability"],
+        EntityKind::CultsBoons => &["type", "cultists", "goal", "signatureSpells", "abilityEntry"],
         EntityKind::Languages => &["type", "script", "typicalSpeakers", "origin", "dialects", "fonts"],
         EntityKind::CharOptions => &["optionType", "prerequisite"],
         EntityKind::Facilities => &["facilityType", "level", "space", "hirelings", "orders", "prerequisite"],
