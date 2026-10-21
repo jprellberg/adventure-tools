@@ -242,14 +242,6 @@ fn initiative_text(m: &Monster) -> String {
     format!("{} ({passive})", signed(bonus))
 }
 
-fn cr_string(cr: &Value) -> Option<String> {
-    match cr {
-        Value::String(s) => Some(s.clone()),
-        Value::Object(o) => str_at(o, "cr").map(String::from),
-        _ => None,
-    }
-}
-
 /// The 2024 ability table: per ability, score / modifier / saving throw
 /// (the save is the modifier unless the creature is proficient), physical
 /// abilities on the first row and mental ones on the second. Abilities
@@ -420,13 +412,7 @@ fn languages_text(m: &Monster) -> String {
 }
 
 fn environments_text(envs: &[String]) -> String {
-    let mut names: Vec<String> = envs
-        .iter()
-        .map(|e| match e.strip_prefix("planar-") {
-            Some(rest) => format!("Planar ({})", title_case(rest)),
-            None => title_case(e),
-        })
-        .collect();
+    let mut names: Vec<String> = envs.iter().map(|e| habitat_name(e)).collect();
     names.sort();
     names.join(", ")
 }

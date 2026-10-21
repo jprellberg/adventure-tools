@@ -7,10 +7,13 @@
 //! library is loaded ([`SearchIndex`]), so a search allocates nothing per
 //! entity; only the best [`MAX_RESULTS`] matches are kept, in a bounded heap.
 
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
+
+use serde_json::Value;
 
 use crate::data::{is_base_source, ruleset_excluded_sources, EntityRef, Library};
 use crate::routes::EntityKind;
+use crate::statblock::format::{cr_string, cr_to_number, habitat_name, title_case};
 
 pub struct SearchHit<'a> {
     pub kind: EntityKind,
@@ -31,14 +34,153 @@ const FIELD_PENALTY: i32 = 1000;
 /// kind/source match.
 const KEYWORD_PENALTY: i32 = FIELD_PENALTY / 2;
 
-/// The kinds and sources the user has switched off in the filter menu. The
-/// default is the 2024 ruleset: the 2014 core rulebooks are off, everything
-/// else is on.
+/// A property of one kind's entities that the filter menu narrows the
+/// results by.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub enum Facet {
+    Habitat,
+    Rarity,
+    SpellClass,
+}
+
+impl Facet {
+    /// The kind whose entities have this property; selecting a value of it
+    /// restricts the results to that kind.
+    pub fn kind(self) -> EntityKind {
+        match self {
+            Facet::Habitat => EntityKind::Bestiary,
+            Facet::Rarity => EntityKind::Items,
+            Facet::SpellClass => EntityKind::Spells,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Facet::Habitat => "Habitat",
+            Facet::Rarity => "Rarity",
+            Facet::SpellClass => "Class",
+        }
+    }
+}
+
+/// An ordered property of one kind's entities that the filter menu narrows
+/// the results to a range of.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub enum Scale {
+    Cr,
+    SpellLevel,
+}
+
+impl Scale {
+    /// The kind whose entities lie on this scale; setting a bound restricts
+    /// the results to that kind.
+    pub fn kind(self) -> EntityKind {
+        match self {
+            Scale::Cr => EntityKind::Bestiary,
+            Scale::SpellLevel => EntityKind::Spells,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Scale::Cr => "CR",
+            Scale::SpellLevel => "Level",
+        }
+    }
+}
+
+/// An entity's value on its kind's scale, with its label: a monster's
+/// challenge rating ("1/4" is 0.25), a spell's level ("Cantrip" is 0).
+fn scale_value(entity: &EntityRef) -> Option<(Scale, Box<str>, f64)> {
+    match entity {
+        EntityRef::Monster(m) => {
+            let cr = m.cr.as_ref().and_then(cr_string)?;
+            let value = cr_to_number(&cr)?;
+            Some((Scale::Cr, cr.into(), value))
+        }
+        EntityRef::Spell(s) => {
+            let level = s.level?;
+            let label = if level == 0 {
+                "Cantrip".into()
+            } else {
+                level.to_string().into()
+            };
+            Some((Scale::SpellLevel, label, level.into()))
+        }
+        _ => None,
+    }
+}
+
+/// Item rarities from least to most rare, the order the rarity filter lists
+/// them in.
+const RARITIES: [&str; 10] = [
+    "None",
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Very Rare",
+    "Legendary",
+    "Artifact",
+    "Varies",
+    "Unknown",
+    "Unknown (Magic)",
+];
+
+/// The facet values of an entity: a monster's habitats,
+/// an item's rarity, the classes that can cast a spell.
+fn facet_values(entity: &EntityRef, library: &Library) -> Vec<(Facet, Box<str>)> {
+    match entity {
+        EntityRef::Monster(m) => m
+            .environment
+            .iter()
+            .map(|e| (Facet::Habitat, habitat_name(e).into()))
+            .collect(),
+        EntityRef::Item(i) => i.rarity.iter().map(|r| (Facet::Rarity, title_case(r).into())).collect(),
+        EntityRef::Spell(s) => {
+            let classes = library
+                .spell_lookup
+                .get(&s.source.to_lowercase())
+                .and_then(|by_name| by_name.get(&s.name.to_lowercase()))
+                .and_then(|entry| entry.get("class"))
+                .and_then(Value::as_object);
+            let mut names: Vec<&str> = classes
+                .into_iter()
+                .flat_map(|by_source| by_source.values())
+                .filter_map(Value::as_object)
+                .flat_map(|list| list.keys().map(String::as_str))
+                .collect();
+            names.sort_unstable();
+            names.dedup();
+            names.into_iter().map(|c| (Facet::SpellClass, c.into())).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The order a facet's values are listed in: rarities by rank, everything
+/// else alphabetically.
+fn facet_order(facet: Facet, value: &str) -> (usize, String) {
+    let rank = match facet {
+        Facet::Rarity => RARITIES.iter().position(|r| *r == value).unwrap_or(RARITIES.len()),
+        Facet::Habitat | Facet::SpellClass => 0,
+    };
+    (rank, value.to_lowercase())
+}
+
+/// What the filter menu lets through: the kinds and sources not switched
+/// off, a range per scale and, per facet, the selected values. The default
+/// is the 2024 ruleset: the 2014 core rulebooks are off, everything else is
+/// on, and neither a range bound nor a facet value is set.
 #[derive(Clone, PartialEq)]
 pub struct Filters {
     hidden_kinds: HashSet<EntityKind>,
     /// Lowercased source codes.
     hidden_sources: HashSet<Box<str>>,
+    /// The lowest and highest value shown on each scale; `None` leaves that
+    /// end open. Only scales with a bound set are present.
+    ranges: BTreeMap<Scale, [Option<f64>; 2]>,
+    /// Only facets with at least one selected value are present.
+    facets: BTreeMap<Facet, BTreeSet<Box<str>>>,
 }
 
 impl Default for Filters {
@@ -46,6 +188,8 @@ impl Default for Filters {
         let mut filters = Filters {
             hidden_kinds: HashSet::new(),
             hidden_sources: HashSet::new(),
+            ranges: BTreeMap::new(),
+            facets: BTreeMap::new(),
         };
         filters.set_ruleset(true);
         filters
@@ -65,14 +209,89 @@ impl Filters {
     }
 
     /// Whether nothing is filtered out beyond the other edition's core
-    /// rulebooks: every kind and every other source is on.
+    /// rulebooks: every kind and every other source is on, and neither a
+    /// range bound nor a facet value is set.
     pub fn is_default_for(&self, use_2024: bool) -> bool {
         let excluded: HashSet<Box<str>> = ruleset_excluded_sources(use_2024)
             .iter()
             .copied()
             .map(|source| source.to_lowercase().into())
             .collect();
-        self.hidden_kinds.is_empty() && self.hidden_sources == excluded
+        self.hidden_kinds.is_empty()
+            && self.hidden_sources == excluded
+            && self.ranges.is_empty()
+            && self.facets.is_empty()
+    }
+
+    /// The kinds the ranges and the selected facet values restrict the
+    /// results to, in `EntityKind::all()` order. More than one lets nothing
+    /// through.
+    pub fn facet_kinds(&self) -> Vec<EntityKind> {
+        let kinds: HashSet<EntityKind> = self
+            .facets
+            .keys()
+            .map(|f| f.kind())
+            .chain(self.ranges.keys().map(|s| s.kind()))
+            .collect();
+        EntityKind::all().filter(|k| kinds.contains(k)).collect()
+    }
+
+    /// The lowest (`max` false) or highest value shown on `scale`, if set.
+    pub fn range_bound(&self, scale: Scale, max: bool) -> Option<f64> {
+        self.ranges.get(&scale).and_then(|range| range[max as usize])
+    }
+
+    /// Sets the lowest (`max` false) or highest value shown on `scale`;
+    /// `None` leaves that end of the range open.
+    pub fn set_range_bound(&mut self, scale: Scale, max: bool, value: Option<f64>) {
+        let range = self.ranges.entry(scale).or_default();
+        range[max as usize] = value;
+        if range.iter().all(Option::is_none) {
+            self.ranges.remove(&scale);
+        }
+    }
+
+    pub fn clear_range(&mut self, scale: Scale) {
+        self.ranges.remove(&scale);
+    }
+
+    /// Whether an entity with the given value on its kind's scale lies in
+    /// every range that is set.
+    fn ranges_admit(&self, value: Option<f64>) -> bool {
+        self.ranges
+            .values()
+            .all(|[min, max]| value.is_some_and(|v| min.is_none_or(|min| v >= min) && max.is_none_or(|max| v <= max)))
+    }
+
+    pub fn facet_selected(&self, facet: Facet, value: &str) -> bool {
+        self.facets.get(&facet).is_some_and(|values| values.contains(value))
+    }
+
+    pub fn toggle_facet(&mut self, facet: Facet, value: &str) {
+        let values = self.facets.entry(facet).or_default();
+        if !values.remove(value) {
+            values.insert(value.into());
+        }
+        if values.is_empty() {
+            self.facets.remove(&facet);
+        }
+    }
+
+    /// Whether any value of `facet` is selected.
+    pub fn facet_set(&self, facet: Facet) -> bool {
+        self.facets.contains_key(&facet)
+    }
+
+    pub fn clear_facet(&mut self, facet: Facet) {
+        self.facets.remove(&facet);
+    }
+
+    /// Whether an entity with the given facet values passes every facet
+    /// with a selection: it has at least one of the selected values of each.
+    fn facets_admit(&self, values: &[(Facet, Box<str>)]) -> bool {
+        self.facets
+            .iter()
+            .all(|(facet, selected)| values.iter().any(|(f, v)| f == facet && selected.contains(v)))
     }
 
     pub fn kind_shown(&self, kind: EntityKind) -> bool {
@@ -127,6 +346,10 @@ struct IndexEntry {
     name: Box<str>,
     source: Box<str>,
     keywords: Box<[Box<str>]>,
+    /// The entity's value on its kind's scale.
+    scale_value: Option<f64>,
+    /// As displayed, not lowercased.
+    facets: Box<[(Facet, Box<str>)]>,
 }
 
 /// The lowercased search text of every entity, in `EntityKind::all()` order.
@@ -137,12 +360,19 @@ pub struct SearchIndex {
     kind_labels: Vec<Box<str>>,
     /// Every source code in the library: the core rulebooks first, then the rest, each sorted case-insensitively.
     pub sources: Vec<Box<str>>,
+    /// Every value of each facet in the library, in [`facet_order`].
+    facet_options: HashMap<Facet, Vec<Box<str>>>,
+    /// Every value on each scale in the library with its label, from lowest
+    /// to highest.
+    scale_steps: HashMap<Scale, Vec<(Box<str>, f64)>>,
 }
 
 impl SearchIndex {
     pub fn build(library: &Library) -> Self {
         let mut entries = Vec::new();
         let mut sources = HashSet::new();
+        let mut facet_options: HashMap<Facet, HashSet<Box<str>>> = HashMap::new();
+        let mut scale_steps: HashMap<Scale, Vec<(Box<str>, f64)>> = HashMap::new();
         for kind in EntityKind::all() {
             for (position, entity) in library.entities_of(kind).enumerate() {
                 sources.insert(entity.source());
@@ -150,23 +380,58 @@ impl SearchIndex {
                 if entity.name().trim().is_empty() {
                     continue;
                 }
+                let facets = facet_values(&entity, library);
+                for (facet, value) in &facets {
+                    facet_options.entry(*facet).or_default().insert(value.clone());
+                }
+                let scale = scale_value(&entity);
+                if let Some((scale, label, value)) = &scale {
+                    scale_steps.entry(*scale).or_default().push((label.clone(), *value));
+                }
                 entries.push(IndexEntry {
                     kind,
                     position,
                     name: entity.name().to_lowercase().into(),
                     source: entity.source().to_lowercase().into(),
                     keywords: entity.keywords().into_iter().map(|k| k.to_lowercase().into()).collect(),
+                    scale_value: scale.map(|(_, _, value)| value),
+                    facets: facets.into(),
                 });
             }
         }
         let kind_labels = EntityKind::all().map(|k| k.label().to_lowercase().into()).collect();
         let mut sources: Vec<Box<str>> = sources.into_iter().map(Box::from).collect();
         sources.sort_by_key(|s| (!is_base_source(s), s.to_lowercase()));
+        let facet_options = facet_options
+            .into_iter()
+            .map(|(facet, values)| {
+                let mut values: Vec<Box<str>> = values.into_iter().collect();
+                values.sort_by_cached_key(|v| facet_order(facet, v));
+                (facet, values)
+            })
+            .collect();
+        for steps in scale_steps.values_mut() {
+            steps.sort_by(|a, b| a.1.total_cmp(&b.1));
+            steps.dedup_by(|a, b| a.1 == b.1);
+        }
         SearchIndex {
             entries,
             kind_labels,
             sources,
+            facet_options,
+            scale_steps,
         }
+    }
+
+    /// Every value on `scale` in the library with its label, from lowest to
+    /// highest.
+    pub fn scale_steps(&self, scale: Scale) -> &[(Box<str>, f64)] {
+        self.scale_steps.get(&scale).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every value of `facet` in the library, in the order the filter lists them.
+    pub fn facet_options(&self, facet: Facet) -> &[Box<str>] {
+        self.facet_options.get(&facet).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -202,14 +467,24 @@ struct Candidate<'a> {
 /// (lower is better - see [`fuzzy_cost`]), then alphabetically; a query
 /// without words matches everything, so the first entities alphabetically
 /// are listed. `filters` hides the kinds and sources switched off in the
-/// filter menu.
+/// filter menu and, while facet values are selected, every entity of
+/// another kind or without the selected values.
 pub fn search<'a>(library: &'a Library, query: &str, filters: &Filters) -> Vec<SearchHit<'a>> {
     let needles: Vec<Needle> = query.split_whitespace().map(Needle::new).collect();
     let index = &library.search_index;
+    let facet_kinds = filters.facet_kinds();
+    if facet_kinds.len() > 1 {
+        return Vec::new();
+    }
 
     let mut best: BinaryHeap<Candidate> = BinaryHeap::with_capacity(MAX_RESULTS + 1);
     for (i, entry) in index.entries.iter().enumerate() {
-        if !filters.kind_shown(entry.kind) || !filters.source_shown_lowercased(&entry.source) {
+        if !filters.kind_shown(entry.kind)
+            || !filters.source_shown_lowercased(&entry.source)
+            || facet_kinds.first().is_some_and(|kind| *kind != entry.kind)
+            || !filters.facets_admit(&entry.facets)
+            || !filters.ranges_admit(entry.scale_value)
+        {
             continue;
         }
         let kind_label = &index.kind_labels[entry.kind as usize];
@@ -325,7 +600,7 @@ fn word_prefix_cost(haystack: &str, needle: &[char]) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fuzzy_cost, Filters, Needle};
+    use super::{fuzzy_cost, Facet, Filters, Needle, Scale};
     use crate::routes::EntityKind;
 
     fn cost(haystack: &str, needle: &str) -> Option<i32> {
@@ -344,6 +619,47 @@ mod tests {
         filters.toggle_source("MPMM");
         filters.toggle_kind(EntityKind::Spells);
         assert!(!filters.is_default_for(false));
+    }
+
+    #[test]
+    fn group_filters_restrict_the_results_to_their_kind() {
+        let mut filters = Filters::default();
+        filters.set_range_bound(Scale::Cr, false, Some(1.0));
+        assert_eq!(filters.facet_kinds(), [EntityKind::Bestiary]);
+        filters.toggle_facet(Facet::Habitat, "Forest");
+        assert_eq!(filters.facet_kinds(), [EntityKind::Bestiary]);
+        assert!(!filters.is_default_for(true));
+        filters.set_range_bound(Scale::SpellLevel, true, Some(3.0));
+        assert_eq!(filters.facet_kinds(), [EntityKind::Bestiary, EntityKind::Spells]);
+        filters.set_range_bound(Scale::Cr, false, None);
+        filters.clear_range(Scale::SpellLevel);
+        filters.clear_facet(Facet::Habitat);
+        assert!(filters.is_default_for(true));
+    }
+
+    #[test]
+    fn ranges_are_open_at_an_unset_end() {
+        let mut filters = Filters::default();
+        assert!(filters.ranges_admit(None));
+        filters.set_range_bound(Scale::Cr, true, Some(0.5));
+        assert!(filters.ranges_admit(Some(0.0)));
+        assert!(filters.ranges_admit(Some(0.5)));
+        assert!(!filters.ranges_admit(Some(1.0)));
+        assert!(!filters.ranges_admit(None));
+        filters.set_range_bound(Scale::Cr, false, Some(0.125));
+        assert!(!filters.ranges_admit(Some(0.0)));
+    }
+
+    #[test]
+    fn facets_admit_entities_with_one_selected_value_of_each() {
+        let mut filters = Filters::default();
+        filters.toggle_facet(Facet::Habitat, "Forest");
+        filters.toggle_facet(Facet::Habitat, "Hill");
+        filters.toggle_facet(Facet::SpellClass, "Wizard");
+        let forest_wizard = [(Facet::Habitat, "Forest".into()), (Facet::SpellClass, "Wizard".into())];
+        let forest_only = [(Facet::Habitat, "Forest".into())];
+        assert!(filters.facets_admit(&forest_wizard));
+        assert!(!filters.facets_admit(&forest_only));
     }
 
     #[test]

@@ -348,10 +348,30 @@ pub fn cr_to_xp(cr: &str) -> Option<i64> {
     XP_BY_CR.iter().find(|(c, _)| *c == cr).map(|(_, xp)| *xp)
 }
 
-fn cr_to_number(cr: &str) -> Option<f64> {
+/// The challenge rating in a monster's `cr` field, which is either the rating
+/// itself or an object holding it (with its lair and coven variants).
+pub fn cr_string(cr: &Value) -> Option<String> {
+    match cr {
+        Value::String(s) => Some(s.clone()),
+        Value::Object(o) => str_at(o, "cr").map(String::from),
+        _ => None,
+    }
+}
+
+/// A challenge rating as a number, "1/4" as 0.25.
+pub fn cr_to_number(cr: &str) -> Option<f64> {
     match cr.split_once('/') {
         Some((n, d)) => Some(n.parse::<f64>().ok()? / d.parse::<f64>().ok()?),
         None => cr.parse().ok(),
+    }
+}
+
+/// The display name of a monster's `environment` code: "planar-abyss" is
+/// "Planar (Abyss)".
+pub fn habitat_name(env: &str) -> String {
+    match env.strip_prefix("planar-") {
+        Some(rest) => format!("Planar ({})", title_case(rest)),
+        None => title_case(env),
     }
 }
 

@@ -5,7 +5,7 @@ use crate::data::Library;
 use crate::pins::{PinList, Pins};
 use crate::render::{render_entity_preview, RenderCtx};
 use crate::routes::{EntityKind, Route, View};
-use crate::search::Filters;
+use crate::search::{Facet, Filters, Scale};
 use crate::state::LibrarySignal;
 use crate::{EntityTarget, HoverSignal, LastDetail, ResyncRequest, SearchInput, UpdateAvailable, Use2024Rules};
 
@@ -130,23 +130,37 @@ fn SearchHeader() -> Element {
     let mut debounce_generation = use_signal(|| 0u32);
 
     // Instead of holding focus (which makes text unselectable), the search
-    // input takes it back when the user types anywhere outside another field.
+    // input takes it back when the user types anywhere outside another text
+    // field - or, inside a filter list, that list's search field does.
+    // Escape anywhere goes to the search input.
     use_hook(|| {
         document::eval(
             r#"
             if (!window.__searchTypeAhead) {
                 window.__searchTypeAhead = true;
+                // A list re-renders when a checkbox in it is clicked, which
+                // drops the focus, so the list last clicked in is remembered.
+                let lastList = null;
+                document.addEventListener("pointerdown", (e) => {
+                    lastList = e.target.closest ? e.target.closest("[data-filter-list]") : null;
+                });
                 document.addEventListener("keydown", (e) => {
-                    const input = document.getElementById("search-input");
+                    const search = document.getElementById("search-input");
                     const t = e.target;
-                    if (!input || t === input || e.ctrlKey || e.metaKey || e.altKey) return;
-                    if (t.closest && t.closest("input, textarea, select, [contenteditable]")) return;
+                    if (!search || e.ctrlKey || e.metaKey || e.altKey) return;
                     if (e.key === "Escape") {
-                        input.focus();
-                        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-                    } else if (e.key.length === 1 && e.key !== " ") {
-                        input.focus();
+                        if (t !== search) {
+                            search.focus();
+                            search.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+                        }
+                        return;
                     }
+                    const list = (t.closest && t.closest("[data-filter-list]")) || (lastList && lastList.isConnected && lastList);
+                    const input = (list && list.querySelector(".filter-search")) || search;
+                    if (t === input) return;
+                    const field = "input:not([type=checkbox]):not([type=range]), textarea, select, [contenteditable]";
+                    if (t.closest && t.closest(field)) return;
+                    if (e.key.length === 1 && e.key !== " ") input.focus();
                 });
             }
             "#,
@@ -190,13 +204,16 @@ fn SearchHeader() -> Element {
 
     rsx! {
         if filters_open() {
-            div { class: "fixed inset-0 z-30 bg-black/10", onclick: move |_| filters_open.set(false) }
+            div {
+                class: "fixed inset-0 z-30 bg-black/10",
+                onclick: move |_| filters_open.set(false),
+            }
         }
         header { class: "fixed inset-x-0 top-0 z-40 flex items-start justify-center gap-1 px-4 py-2.5 {header_state}",
             div { class: "pointer-events-auto min-w-0 max-w-xl flex-1 rounded-2xl border p-1.5 {card_state}",
                 div { class: "flex items-center gap-2",
                     div { class: "flex shrink-0 overflow-hidden rounded-full border border-gray-300",
-                        for (target , glyph , title) in VIEW_TOGGLES {
+                        for (target, glyph, title) in VIEW_TOGGLES {
                             button {
                                 key: "{glyph}",
                                 class: "h-[2.125rem] w-8 text-sm leading-none {view_toggle_state(view == Some(target))}",
@@ -228,7 +245,8 @@ fn SearchHeader() -> Element {
                                 // The results follow the query in the address.
                                 spawn(async move {
                                     gloo_timers::future::TimeoutFuture::new(SEARCH_DEBOUNCE_MS).await;
-                                    let showing_results = router.current::<Route>().view() == Some(View::Results);
+                                    let showing_results = router.current::<Route>().view()
+                                        == Some(View::Results);
                                     if debounce_generation() == generation && showing_results {
                                         nav.replace(Route::search(&value));
                                     }
@@ -288,9 +306,10 @@ fn SearchHeader() -> Element {
     }
 }
 
-/// The filter options below the search bar: the ruleset toggle (which
-/// switches the core rulebooks' source buttons) and one on/off button per
-/// entity kind and per source, tinted like the tags on the cards.
+/// The filter options below the search bar: a checkbox list each for the
+/// kinds and sources shown (the latter with the ruleset toggle, which
+/// switches the core rulebooks), and the kind-specific filters, each of
+/// which restricts the results to its own kind.
 #[component]
 fn FilterPanel(on_change: EventHandler<()>) -> Element {
     let library = use_context::<LibrarySignal>();
@@ -299,124 +318,418 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
     let Some(lib) = library.read().clone() else {
         return rsx! {};
     };
+    let current = filters.read().clone();
 
-    rsx! {
-        div { class: "mt-1.5 max-h-[60vh] space-y-3 overflow-y-auto border-t border-gray-200 px-1 pb-1 pt-2.5",
-            FilterSection { label: "Rules",
-                for (use_2024 , label) in [(false, "2014"), (true, "2024")] {
-                    button {
-                        key: "{label}",
-                        class: "rounded-full border px-3 py-0.5 text-xs {toggle_state(rules().0 == use_2024)}",
-                        title: "Show the {label} core rulebooks and hide the other edition's",
-                        aria_pressed: rules().0 == use_2024,
-                        onclick: move |_| {
-                            rules.set(Use2024Rules(use_2024));
-                            filters.write().set_ruleset(use_2024);
-                            on_change.call(());
-                        },
-                        "{label}"
-                    }
-                }
+    let kinds: Vec<SelectOption> = EntityKind::all()
+        .map(|kind| SelectOption {
+            label: kind.label().to_string(),
+            title: None,
+            classes: Some(kind.badge_classes()),
+            checked: current.kind_shown(kind),
+        })
+        .collect();
+    let sources: Vec<SelectOption> = lib
+        .search_index
+        .sources
+        .iter()
+        .map(|source| SelectOption {
+            label: source.to_string(),
+            title: lib.source_full_name(source).map(str::to_string),
+            classes: Some(source_badge_classes(source)),
+            checked: current.source_shown(source),
+        })
+        .collect();
+    let range_slider = |scale: Scale| {
+        rsx! {
+            RangeSlider {
+                scale,
+                steps: lib.search_index.scale_steps(scale).to_vec(),
+                on_change,
             }
-            FilterSection {
-                label: "Kinds",
-                on_all: move |shown| {
-                    filters.write().set_all_kinds(shown);
-                    on_change.call(());
-                },
-                for kind in EntityKind::all() {
-                    FilterChip {
-                        key: "{kind}",
-                        label: kind.label(),
-                        classes: kind.badge_classes(),
-                        on: filters.read().kind_shown(kind),
-                        onclick: move |_| {
-                            filters.write().toggle_kind(kind);
-                            on_change.call(());
-                        },
-                    }
-                }
-            }
-            FilterSection {
-                label: "Sources",
-                on_all: {
-                    let lib = lib.clone();
-                    move |shown| {
-                        filters.write().set_all_sources(shown, &lib.search_index.sources);
+        }
+    };
+    let facet_select = |facet: Facet| {
+        let options: Vec<SelectOption> = lib
+            .search_index
+            .facet_options(facet)
+            .iter()
+            .map(|value| SelectOption {
+                label: value.to_string(),
+                title: None,
+                classes: None,
+                checked: current.facet_selected(facet, value),
+            })
+            .collect();
+        let values = lib.search_index.facet_options(facet).to_vec();
+        rsx! {
+            FilterRow { label: facet.label(),
+                MultiSelect {
+                    options,
+                    columns: match facet {
+                        Facet::Habitat | Facet::Rarity => "columns-2",
+                        Facet::SpellClass => "columns-3",
+                    },
+                    on_toggle: move |i: usize| {
+                        filters.write().toggle_facet(facet, &values[i]);
                         on_change.call(());
-                    }
-                },
-                for source in lib.search_index.sources.iter() {
-                    FilterChip {
-                        key: "{source}",
-                        label: source.to_string(),
-                        title: lib.source_full_name(source).map(str::to_string),
-                        classes: source_badge_classes(source),
-                        on: filters.read().source_shown(source),
-                        onclick: {
-                            let source = source.clone();
-                            move |_| {
-                                filters.write().toggle_source(&source);
-                                on_change.call(());
-                            }
+                    },
+                    ListAction {
+                        label: "clear",
+                        active: current.facet_set(facet),
+                        disabled: !current.facet_set(facet),
+                        onclick: move |_| {
+                            filters.write().clear_facet(facet);
+                            on_change.call(());
                         },
                     }
                 }
             }
         }
-    }
-}
+    };
 
-/// The classes of a filter control that is switched on or off.
-fn toggle_state(on: bool) -> &'static str {
-    if on {
-        "border-gray-400 bg-gray-100 text-gray-900"
-    } else {
-        "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
-    }
-}
-
-/// A labelled group of filter controls; with `on_all`, the group also gets
-/// "all" and "none" buttons that switch every control on or off.
-#[component]
-fn FilterSection(label: &'static str, on_all: Option<EventHandler<bool>>, children: Element) -> Element {
     rsx! {
-        section {
-            div { class: "mb-1 flex items-baseline gap-2 text-[10px] uppercase tracking-wide text-gray-400",
-                span { class: "font-medium", "{label}" }
-                if let Some(on_all) = on_all {
-                    button { class: "hover:text-gray-700", onclick: move |_| on_all.call(true), "all" }
-                    button { class: "hover:text-gray-700", onclick: move |_| on_all.call(false), "none" }
+        div { class: "mt-1.5 max-h-[70vh] space-y-3 overflow-y-auto border-t border-gray-200 px-1 pb-1 pt-2.5",
+            if let Some(warning) = filter_warning(&current) {
+                p { class: "rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800",
+                    "⚠ {warning}"
                 }
             }
-            div { class: "flex flex-wrap gap-1", {children} }
+            div { class: "space-y-3",
+                FilterGroup { label: "Show",
+                    FilterRow { label: "Kinds",
+                        MultiSelect {
+                            options: kinds,
+                            on_toggle: move |i: usize| {
+                                if let Some(kind) = EntityKind::all().nth(i) {
+                                    filters.write().toggle_kind(kind);
+                                    on_change.call(());
+                                }
+                            },
+                            for (shown, label) in [(true, "all"), (false, "none")] {
+                                ListAction {
+                                    key: "{label}",
+                                    label,
+                                    onclick: move |_| {
+                                        filters.write().set_all_kinds(shown);
+                                        on_change.call(());
+                                    },
+                                }
+                            }
+                        }
+                    }
+                    FilterRow { label: "Sources",
+                        MultiSelect {
+                            options: sources,
+                            on_toggle: {
+                                let lib = lib.clone();
+                                move |i: usize| {
+                                    filters.write().toggle_source(&lib.search_index.sources[i]);
+                                    on_change.call(());
+                                }
+                            },
+                            for (shown, label) in [(true, "all"), (false, "none")] {
+                                ListAction {
+                                    key: "{label}",
+                                    label,
+                                    onclick: {
+                                        let lib = lib.clone();
+                                        move |_| {
+                                            filters.write().set_all_sources(shown, &lib.search_index.sources);
+                                            on_change.call(());
+                                        }
+                                    },
+                                }
+                            }
+                            for (use_2024, label) in [(false, "2014"), (true, "2024")] {
+                                ListAction {
+                                    key: "{label}",
+                                    label,
+                                    title: "Show the {label} core rulebooks and hide the other edition's",
+                                    pressed: rules().0 == use_2024,
+                                    onclick: move |_| {
+                                        rules.set(Use2024Rules(use_2024));
+                                        filters.write().set_ruleset(use_2024);
+                                        on_change.call(());
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+                div { class: "space-y-3",
+                    FilterGroup { label: EntityKind::Bestiary.label(),
+                        {range_slider(Scale::Cr)}
+                        {facet_select(Facet::Habitat)}
+                    }
+                    FilterGroup { label: EntityKind::Items.label(), {facet_select(Facet::Rarity)} }
+                    FilterGroup { label: EntityKind::Spells.label(),
+                        {range_slider(Scale::SpellLevel)}
+                        {facet_select(Facet::SpellClass)}
+                    }
+                }
+            }
         }
     }
 }
 
-/// One entity kind or source as an on/off button, tinted with its tag colors
-/// while on and greyed out while off.
+/// Why the filters let nothing through, when it is the kind-specific
+/// filters' doing: they are set for more than one kind, or for a kind that
+/// is switched off.
+fn filter_warning(filters: &Filters) -> Option<String> {
+    let kinds = filters.facet_kinds();
+    let labels: Vec<&str> = kinds.iter().map(|k| k.label()).collect();
+    match kinds.as_slice() {
+        [] => None,
+        [kind] if !filters.kind_shown(*kind) => Some(format!(
+            "{} filters are set, but {} is switched off under Kinds, so nothing matches.",
+            labels[0], labels[0]
+        )),
+        [_] => None,
+        _ => Some(format!(
+            "Filters are set for {}. Each limits the results to its own kind, so nothing matches.",
+            labels.join(" and ")
+        )),
+    }
+}
+
+/// A headed group of filter rows.
 #[component]
-fn FilterChip(
-    label: String,
+fn FilterGroup(label: &'static str, children: Element) -> Element {
+    rsx! {
+        section { class: "space-y-1.5",
+            div { class: "text-[10px] font-medium uppercase tracking-wide text-gray-400",
+                "{label}"
+            }
+            {children}
+        }
+    }
+}
+
+/// One filter control with its label to the left.
+#[component]
+fn FilterRow(label: &'static str, children: Element) -> Element {
+    rsx! {
+        div { class: "flex items-start gap-2",
+            span { class: "w-14 shrink-0 pt-1 text-xs text-gray-500", "{label}" }
+            div { class: "min-w-0 flex-1", {children} }
+        }
+    }
+}
+
+/// A small text button acting on a whole filter ("all", "none", "clear", a
+/// ruleset); `pressed` marks the one in effect, and `active` tints a
+/// "clear" amber, like the filter button, while there is something to clear.
+#[component]
+fn ListAction(
+    label: &'static str,
     title: Option<String>,
-    classes: &'static str,
-    on: bool,
+    pressed: Option<bool>,
+    active: Option<bool>,
+    disabled: Option<bool>,
     onclick: EventHandler<()>,
 ) -> Element {
-    let state = if on {
-        classes
-    } else {
-        "bg-white text-gray-400 ring-1 ring-inset ring-gray-200 hover:ring-gray-300"
+    let state = match (pressed, active) {
+        (Some(true), _) => "font-semibold text-gray-900",
+        // The padding is offset by the margin so the label stays in place.
+        (_, Some(true)) => "-mx-1 rounded bg-amber-100 px-1 text-amber-800 hover:bg-amber-200",
+        _ => "text-gray-400 hover:text-gray-700 disabled:text-gray-200 disabled:hover:text-gray-200",
     };
-    let title = title.unwrap_or_else(|| label.clone());
     rsx! {
         button {
-            class: "cursor-pointer rounded px-1.75 py-0.5 text-[10px] font-medium uppercase tracking-wide {state}",
-            title: "{title}",
-            aria_pressed: on,
+            class: "text-[10px] uppercase tracking-wide {state}",
+            title,
+            aria_pressed: pressed,
+            disabled: disabled.unwrap_or(false),
             onclick: move |_| onclick.call(()),
             "{label}"
+        }
+    }
+}
+
+/// One checkbox of a [`MultiSelect`].
+#[derive(Clone, PartialEq)]
+struct SelectOption {
+    label: String,
+    title: Option<String>,
+    /// Shows the label as a tag with these classes rather than as plain text.
+    classes: Option<&'static str>,
+    checked: bool,
+}
+
+/// A scrolling list of checkboxes, filtered by what is typed into its
+/// search field, which typing anywhere in the list goes to; Enter toggles
+/// the first match. `on_toggle` gets the index of the option clicked;
+/// `columns` is a Tailwind `columns-*` class to lay the options out in
+/// several columns; `children` are [`ListAction`]s beside the search field.
+#[component]
+fn MultiSelect(
+    options: Vec<SelectOption>,
+    columns: Option<&'static str>,
+    on_toggle: EventHandler<usize>,
+    children: Element,
+) -> Element {
+    // Options laid out in columns are few enough to show in full; a
+    // height limit would overflow the columns sideways.
+    let layout = columns.map_or("max-h-40 overflow-y-auto".to_string(), |c| format!("{c} gap-0"));
+    let mut query = use_signal(String::new);
+    let needle = query().to_lowercase();
+    let visible: Vec<(usize, SelectOption)> = options
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_, o)| {
+            o.label.to_lowercase().contains(&needle)
+                || o.title.as_ref().is_some_and(|t| t.to_lowercase().contains(&needle))
+        })
+        .collect();
+    let first_visible = visible.first().map(|(i, _)| *i);
+
+    rsx! {
+        div {
+            class: "rounded-lg border border-gray-200 bg-white",
+            "data-filter-list": true,
+            div { class: "flex items-center gap-2 border-b border-gray-200 px-2 py-1",
+                input {
+                    class: "filter-search min-w-0 flex-1 bg-transparent py-0.5 text-xs outline-none",
+                    r#type: "text",
+                    placeholder: "Type to filter…",
+                    value: "{query}",
+                    oninput: move |e| query.set(e.value()),
+                    onkeydown: move |e| {
+                        if e.key() == Key::Enter {
+                            if let Some(i) = first_visible {
+                                on_toggle.call(i);
+                            }
+                        }
+                    },
+                }
+                div { class: "flex shrink-0 gap-2", {children} }
+            }
+            div { class: "py-1 {layout}",
+                for (i, option) in visible {
+                    label {
+                        key: "{option.label}",
+                        class: "flex break-inside-avoid cursor-pointer items-center gap-2 px-2 py-0.5 text-xs hover:bg-gray-50",
+                        title: option.title.clone().unwrap_or_else(|| option.label.clone()),
+                        input {
+                            r#type: "checkbox",
+                            class: "accent-gray-700",
+                            checked: option.checked,
+                            onchange: move |_| on_toggle.call(i),
+                        }
+                        if let Some(classes) = option.classes {
+                            span { class: "shrink-0 rounded px-1.75 py-0.5 text-[10px] font-medium uppercase tracking-wide {classes}",
+                                "{option.label}"
+                            }
+                        } else {
+                            span { "{option.label}" }
+                        }
+                        if let (Some(title), Some(_)) = (&option.title, option.classes) {
+                            span { class: "truncate text-gray-400", "{title}" }
+                        }
+                    }
+                }
+                if first_visible.is_none() {
+                    p { class: "px-2 py-0.5 text-xs text-gray-400", "No matches" }
+                }
+            }
+        }
+    }
+}
+
+/// A range slider over every value on `scale` in the library, with a
+/// draggable thumb for the lowest and one for the highest shown. A thumb at
+/// its end of the scale leaves that end of the range open.
+#[component]
+fn RangeSlider(scale: Scale, steps: Vec<(Box<str>, f64)>, on_change: EventHandler<()>) -> Element {
+    let mut filters = use_context::<Signal<Filters>>();
+    let Some(last) = steps.len().checked_sub(1).filter(|last| *last > 0) else {
+        return rsx! {};
+    };
+    let position = |max: bool, open: usize| {
+        filters
+            .read()
+            .range_bound(scale, max)
+            .and_then(|bound| steps.iter().position(|(_, value)| *value == bound))
+            .unwrap_or(open)
+    };
+    let min = position(false, 0);
+    let max = position(true, last);
+    let is_open = min == 0 && max == last;
+    let summary = match (min, max) {
+        _ if is_open => "Any".to_string(),
+        (a, b) if a == b => steps[a].0.to_string(),
+        (a, b) => format!("{} – {}", steps[a].0, steps[b].0),
+    };
+    let percent = |i: usize| i as f64 * 100.0 / last as f64;
+    let (left, right) = (percent(min), 100.0 - percent(max));
+    // The thumb last moved toward the top end lies on top, so that two thumbs
+    // pushed together at either end can still be pulled apart.
+    let min_on_top = min > last / 2;
+    let id = move |max: bool| format!("{}-{}", scale.label().to_lowercase(), if max { "max" } else { "min" });
+    let mut set = {
+        let steps = steps.clone();
+        move |is_max: bool, value: String| {
+            let Ok(i) = value.parse::<usize>() else {
+                return;
+            };
+            let (i, open_end) = if is_max { (i.max(min), last) } else { (i.min(max), 0) };
+            let bound = (i != open_end).then_some(steps[i].1);
+            filters.write().set_range_bound(scale, is_max, bound);
+            // The input may have been dragged past the other thumb; put it back.
+            document::eval(&format!("document.getElementById('{}').value = {i}", id(is_max)));
+            on_change.call(());
+        }
+    };
+    let label = scale.label().to_lowercase();
+    let thumb = "pointer-events-none absolute inset-0 h-4 w-full cursor-grab appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-500 [&::-webkit-slider-thumb]:bg-white [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-gray-500 [&::-moz-range-thumb]:bg-white";
+
+    rsx! {
+        FilterRow { label: scale.label(),
+            div { class: "flex items-center gap-2 pl-1 pr-[calc(0.5rem+1px)] pt-1",
+                div { class: "relative h-4 flex-1",
+                    div { class: "absolute inset-x-0 top-1.5 h-1 rounded-full bg-gray-200" }
+                    div {
+                        class: "absolute top-1.5 h-1 rounded-full bg-gray-500",
+                        style: "left: {left}%; right: {right}%",
+                    }
+                    input {
+                        id: id(false),
+                        class: "{thumb}",
+                        style: if min_on_top { "z-index: 2" } else { "z-index: 1" },
+                        r#type: "range",
+                        min: "0",
+                        max: "{last}",
+                        value: "{min}",
+                        aria_label: "Lowest {label}",
+                        oninput: {
+                            let mut set = set.clone();
+                            move |e: FormEvent| set(false, e.value())
+                        },
+                    }
+                    input {
+                        id: id(true),
+                        class: "{thumb}",
+                        style: "z-index: 1",
+                        r#type: "range",
+                        min: "0",
+                        max: "{last}",
+                        value: "{max}",
+                        aria_label: "Highest {label}",
+                        oninput: move |e: FormEvent| set(true, e.value()),
+                    }
+                }
+                span { class: "w-20 shrink-0 text-xs text-gray-700 tabular-nums", "{summary}" }
+                ListAction {
+                    label: "clear",
+                    active: !is_open,
+                    disabled: is_open,
+                    onclick: move |_| {
+                        filters.write().clear_range(scale);
+                        on_change.call(());
+                    },
+                }
+            }
         }
     }
 }
