@@ -41,11 +41,10 @@ pub type ResyncRequest = Coroutine<()>;
 #[derive(Clone, Copy, PartialEq)]
 pub struct SearchInput(pub Signal<String>);
 
-/// The debounced search text the Home page actually filters by.
-/// Kept separate from [`SearchInput`] so a fast typist doesn't
-/// re-run a full-corpus search on every keystroke - see `layout::SearchHeader`.
+/// The entity the detail view showed last, which it shows again when the
+/// view toggle returns to it.
 #[derive(Clone, Copy, PartialEq)]
-pub struct SearchQuery(pub Signal<String>);
+pub struct LastDetail(pub Signal<Option<EntityTarget>>);
 
 /// Identifies one entity, wherever a signal needs to name "this one" rather
 /// than hold its rendered content.
@@ -79,9 +78,9 @@ fn App() -> Element {
     let mut update_available = use_signal(|| UpdateAvailable(false));
 
     use_context_provider(|| library);
-    use_context_provider(|| pins::PinsSignal::new(pins::from_location()));
+    let pins = pins::Pins::provide();
     use_context_provider(|| SearchInput(Signal::new(String::new())));
-    use_context_provider(|| SearchQuery(Signal::new(String::new())));
+    use_context_provider(|| LastDetail(Signal::new(None)));
     use_context_provider(|| update_available);
     use_context_provider(|| HoverSignal(Signal::new(None)));
     use_context_provider(|| Signal::new(Use2024Rules(true)));
@@ -103,6 +102,7 @@ fn App() -> Element {
     use_context_provider(|| resync);
 
     use_future(move || async move {
+        pins.load().await;
         match data::load_library(progress).await {
             Ok(lib) => {
                 library.set(Some(Rc::new(lib)));

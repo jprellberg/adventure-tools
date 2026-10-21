@@ -380,7 +380,7 @@ fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ct
         k == kind && s.eq_ignore_ascii_case(&target.source) && n.eq_ignore_ascii_case(&target.name)
     });
 
-    let to = crate::routes::Route::of_view(crate::routes::View::Detail, Some(target.clone()));
+    let to = crate::routes::Route::detail_of(Some(target.clone()));
 
     let mut hover = ctx.hover.0;
     let onmouseenter = move |evt: MouseEvent| {

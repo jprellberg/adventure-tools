@@ -6,9 +6,9 @@
 use dioxus::prelude::*;
 
 use crate::data::{is_base_source, Library};
-use crate::pins::{is_pinned, toggle_pin, PinsSignal};
+use crate::pins::Pins;
 use crate::render::RenderCtx;
-use crate::routes::{EntityKind, Route, View};
+use crate::routes::{EntityKind, Route};
 use crate::state::LibrarySignal;
 use crate::viewport::Viewport;
 use crate::{EntityTarget, HoverSignal};
@@ -50,7 +50,7 @@ pub fn title_link(kind: EntityKind, source: &str, name: &str, ctx: RenderCtx) ->
         source: source.to_string(),
         name: name.to_string(),
     };
-    let to = Route::of_view(View::Detail, Some(target));
+    let to = Route::detail_of(Some(target));
     rsx! {
         Link { class: "cursor-pointer hover:underline", to, {crate::render::render_inline(name, ctx)} }
     }
@@ -135,7 +135,7 @@ impl CardSize {
 pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     let library = use_context::<LibrarySignal>();
     let hover = use_context::<HoverSignal>();
-    let pins = use_context::<PinsSignal>();
+    let mut pins = use_context::<Pins>();
     let Some(lib) = library.read().clone() else {
         return rsx! {};
     };
@@ -144,10 +144,10 @@ pub fn EntityRow(kind: EntityKind, source: String, name: String) -> Element {
     };
     let (source, name) = (entity.source().to_string(), entity.name().to_string());
     let ctx = RenderCtx::new(&lib, hover);
-    let pinned = is_pinned(pins, kind, &source, &name);
+    let pinned = pins.is_pinned(kind, &source, &name);
     let toggle = {
         let (source, name) = (source.clone(), name.clone());
-        move |_| toggle_pin(pins, kind, &source, &name)
+        move |_| pins.toggle(kind, &source, &name)
     };
 
     rsx! {
@@ -179,7 +179,7 @@ pub fn EntityCard(
     #[props(default = CardSize::Base)] size: CardSize,
 ) -> Element {
     let library = use_context::<LibrarySignal>();
-    let pins = use_context::<PinsSignal>();
+    let mut pins = use_context::<Pins>();
     let hover = use_context::<HoverSignal>();
     // A card's body is only built once the card has scrolled into view: a
     // search shows up to 60 cards, but only the few on screen are worth
@@ -205,11 +205,11 @@ pub fn EntityCard(
     };
     let canonical_source = entity.source().to_string();
     let canonical_name = entity.name().to_string();
-    let pinned = is_pinned(pins, kind, &canonical_source, &canonical_name);
+    let pinned = pins.is_pinned(kind, &canonical_source, &canonical_name);
     let onclick = {
         let source = canonical_source.clone();
         let name = canonical_name.clone();
-        move |_| toggle_pin(pins, kind, &source, &name)
+        move |_| pins.toggle(kind, &source, &name)
     };
 
     let ctx = RenderCtx::new(&lib, hover);

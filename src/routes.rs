@@ -8,6 +8,7 @@ use crate::layout::RootLayout;
 use crate::pages::book::BookPage;
 use crate::pages::entity_detail::EntityDetailPage;
 use crate::pages::home::{PinnedPage, ResultsPage};
+use crate::pins::PinList;
 use crate::EntityTarget;
 
 /// The kinds of reference entities the app knows about.
@@ -268,6 +269,7 @@ impl<'de> serde::Deserialize<'de> for EntityKind {
         s.parse().map_err(serde::de::Error::custom)
     }
 }
+
 /// Which of the three views the page shows: the search results, the pinned
 /// entities or a single entity in full.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -277,12 +279,10 @@ pub enum View {
     Detail,
 }
 
-/// The entity the trailing segments of a route name (`kind/source/name`), if
-/// any. The entity of the detail view rides along in the address of the other
-/// views, so it survives switching between them. The router leaves '/' and
-/// '%' unescaped when it writes a segment, which would split a name such as
-/// "Armor (+1/+2)" into two segments (and misread a literal "%2F"), so both
-/// are escaped here.
+/// The entity the segments of a detail route name (`kind/source/name`), if
+/// any. The router leaves '/' and '%' unescaped when it writes a segment,
+/// which would split a name such as "Armor (+1/+2)" into two segments (and
+/// misread a literal "%2F"), so both are escaped here.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DetailSegments(pub Option<EntityTarget>);
 
@@ -321,15 +321,37 @@ impl FromRouteSegments for DetailSegments {
     }
 }
 
+/// The search query, as the single segment of the search route (escaped like
+/// [`DetailSegments`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SearchText(pub String);
+
+impl ToRouteSegments for SearchText {
+    fn display_route_segments(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.is_empty() {
+            return Ok(());
+        }
+        [escape_segment(&self.0)].display_route_segments(f)
+    }
+}
+
+impl FromRouteSegments for SearchText {
+    type Err = std::convert::Infallible;
+
+    fn from_route_segments(segments: &[&str]) -> Result<Self, Self::Err> {
+        Ok(SearchText(segments.join("/")))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Routable)]
 pub enum Route {
     #[layout(RootLayout)]
     #[route("/")]
     Home {},
-    #[route("/pins/:..detail")]
-    Pins { detail: DetailSegments },
-    #[route("/search/:..detail")]
-    Search { detail: DetailSegments },
+    #[route("/pins/:..pins")]
+    Pins { pins: PinList },
+    #[route("/search/:..query")]
+    Search { query: SearchText },
     #[route("/entities/:..detail")]
     EntityDetail { detail: DetailSegments },
     #[route("/books/:source/:..section")]
@@ -340,29 +362,26 @@ pub enum Route {
 }
 
 impl Route {
-    /// The address of `view` showing (or, for the other views, carrying)
-    /// `detail`. A book is shown in the detail view by its page.
-    pub fn of_view(view: View, detail: Option<EntityTarget>) -> Route {
-        if let (
-            View::Detail,
+    /// The detail view showing `target`. A book is shown by its page.
+    pub fn detail_of(target: Option<EntityTarget>) -> Route {
+        match target {
             Some(EntityTarget {
                 kind: EntityKind::Books,
                 source,
                 ..
-            }),
-        ) = (view, &detail)
-        {
-            return Route::Book {
-                source: source.clone(),
+            }) => Route::Book {
+                source,
                 section: Vec::new(),
-            };
+            },
+            target => Route::EntityDetail {
+                detail: DetailSegments(target),
+            },
         }
-        let detail = DetailSegments(detail);
-        match view {
-            View::Pins if detail.0.is_none() => Route::Home {},
-            View::Pins => Route::Pins { detail },
-            View::Results => Route::Search { detail },
-            View::Detail => Route::EntityDetail { detail },
+    }
+
+    pub fn search(query: &str) -> Route {
+        Route::Search {
+            query: SearchText(query.to_string()),
         }
     }
 
@@ -375,15 +394,6 @@ impl Route {
             Route::NotFound { .. } => None,
         }
     }
-
-    /// The entity the address names. A book's page names its book by
-    /// source alone.
-    pub fn detail(&self) -> Option<&EntityTarget> {
-        match self {
-            Route::Pins { detail } | Route::Search { detail } | Route::EntityDetail { detail } => detail.0.as_ref(),
-            Route::Home {} | Route::Book { .. } | Route::NotFound { .. } => None,
-        }
-    }
 }
 
 #[component]
@@ -393,19 +403,19 @@ fn Home() -> Element {
     }
 }
 
+/// The address spells out the pins; the page shows the pins themselves.
 #[component]
-fn Pins(detail: DetailSegments) -> Element {
-    let _ = detail;
+fn Pins(pins: PinList) -> Element {
+    let _ = pins;
     rsx! {
         PinnedPage {}
     }
 }
 
 #[component]
-fn Search(detail: DetailSegments) -> Element {
-    let _ = detail;
+fn Search(query: SearchText) -> Element {
     rsx! {
-        ResultsPage {}
+        ResultsPage { query: query.0 }
     }
 }
 
@@ -451,42 +461,48 @@ mod tests {
     }
 
     #[test]
-    fn entity_names_survive_the_url() {
-        for name in ["Legendary Resistance (4/Day)", "a/b c?d#e%f", "100%2F", "Cloak"] {
-            for view in [View::Results, View::Pins, View::Detail] {
-                let route = Route::of_view(view, Some(target(EntityKind::Items, "XDMG", name)));
-                assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{name}");
-            }
+    fn names_and_queries_survive_the_url() {
+        for text in ["Legendary Resistance (4/Day)", "a/b c?d#e%f", "100%2F", "Cloak"] {
+            let route = Route::detail_of(Some(target(EntityKind::Items, "XDMG", text)));
+            assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{text}");
+            let route = Route::search(text);
+            assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{text}");
         }
     }
 
     #[test]
     fn views_round_trip_through_the_url() {
         let ghoul = target(EntityKind::Bestiary, "XMM", "Ghoul");
-        for view in [View::Results, View::Pins, View::Detail] {
-            for detail in [None, Some(ghoul.clone())] {
-                let route = Route::of_view(view, detail.clone());
-                let parsed: Route = route.to_string().parse().unwrap();
-                assert_eq!(parsed.view(), Some(view), "{route}");
-                assert_eq!(parsed.detail(), detail.as_ref(), "{route}");
-            }
+        for route in [
+            Route::search(""),
+            Route::search("blight bes"),
+            Route::Pins {
+                pins: PinList::default(),
+            },
+            Route::detail_of(None),
+            Route::detail_of(Some(ghoul.clone())),
+        ] {
+            assert_eq!(route.to_string().parse::<Route>().unwrap(), route, "{route}");
         }
-        assert_eq!(Route::of_view(View::Pins, None).to_string(), "/");
+        assert_eq!(Route::search("").to_string(), "/search");
         assert_eq!(
-            Route::of_view(View::Detail, Some(ghoul)).to_string(),
+            Route::Pins {
+                pins: PinList::default()
+            }
+            .to_string(),
+            "/pins"
+        );
+        assert_eq!(
+            Route::detail_of(Some(ghoul)).to_string(),
             "/entities/bestiary/XMM/Ghoul"
         );
     }
 
     #[test]
     fn a_book_is_shown_by_its_page_in_the_detail_view() {
-        let book = target(EntityKind::Books, "TST", "Test Book");
-        let route = Route::of_view(View::Detail, Some(book.clone()));
+        let route = Route::detail_of(Some(target(EntityKind::Books, "TST", "Test Book")));
         assert_eq!(route.to_string(), "/books/TST");
         assert_eq!(route.view(), Some(View::Detail));
-        // The other views carry the book like any entity.
-        let route = Route::of_view(View::Results, Some(book.clone()));
-        assert_eq!(route.to_string().parse::<Route>().unwrap().detail(), Some(&book));
     }
 
     #[test]

@@ -16,8 +16,8 @@ const DB_VERSION: u32 = 3;
 /// `super::github`/`super::sync`), keyed by their path relative to `data/`.
 pub const STORE_FILES: &str = "files";
 /// Small sync bookkeeping: the last-synced commit sha under `"version"`, the
-/// per-file blob shas under `"file_shas"`, and the key of the cached library
-/// under `"snapshot_key"`.
+/// per-file blob shas under `"file_shas"`, the key of the cached library
+/// under `"snapshot_key"`, and the pins (see `crate::pins`) under `"pins"`.
 pub const STORE_META: &str = "meta";
 /// The serialized parsed library (see `super::snapshot`), under key `"library"`.
 pub const STORE_SNAPSHOT: &str = "snapshot";

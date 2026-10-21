@@ -501,6 +501,9 @@
   .animate-spin {
     animation: var(--animate-spin);
   }
+  .cursor-grab {
+    cursor: grab;
+  }
   .cursor-help {
     cursor: help;
   }
@@ -1057,6 +1060,9 @@
   }
   .underline-offset-2 {
     text-underline-offset: 2px;
+  }
+  .opacity-40 {
+    opacity: 40%;
   }
   .shadow-lg {
     --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--tw-shadow-color, rgb(0 0 0 / 0.1));

@@ -2,11 +2,12 @@ use dioxus::prelude::*;
 
 use crate::card::source_badge_classes;
 use crate::data::Library;
+use crate::pins::{PinList, Pins};
 use crate::render::{render_entity_preview, RenderCtx};
 use crate::routes::{EntityKind, Route, View};
 use crate::search::Filters;
 use crate::state::LibrarySignal;
-use crate::{EntityTarget, HoverSignal, ResyncRequest, SearchInput, SearchQuery, UpdateAvailable, Use2024Rules};
+use crate::{EntityTarget, HoverSignal, LastDetail, ResyncRequest, SearchInput, UpdateAvailable, Use2024Rules};
 
 /// How long to wait after the last keystroke before re-running the search:
 /// long enough that fast typing doesn't re-filter the whole corpus on every
@@ -29,24 +30,60 @@ fn view_toggle_state(on: bool) -> &'static str {
     }
 }
 
-/// The entity the detail view shows or - while another view is showing -
-/// keeps for the way back. A book's page counts as showing the book.
-fn current_detail(route: &Route, library: Option<&Library>) -> Option<EntityTarget> {
-    if let Route::Book { source, .. } = route {
-        let book = library?.book(source)?;
-        return Some(EntityTarget {
-            kind: EntityKind::Books,
-            source: book.source.clone(),
-            name: book.name.clone(),
-        });
+/// The entity the detail view shows. A book's page counts as showing the
+/// book.
+fn shown_detail(route: &Route, library: Option<&Library>) -> Option<EntityTarget> {
+    match route {
+        Route::Book { source, .. } => {
+            let book = library?.book(source)?;
+            Some(EntityTarget {
+                kind: EntityKind::Books,
+                source: book.source.clone(),
+                name: book.name.clone(),
+            })
+        }
+        Route::EntityDetail { detail } => detail.0.clone(),
+        _ => None,
     }
-    route.detail().cloned()
+}
+
+/// Keeps the app state and the address in step whenever the route changes:
+/// the pinned view's address spells out the current pins (rewritten in place
+/// whenever they change), a search address puts its query into the search
+/// bar, and the detail view's entity is kept for the way back to it.
+fn follow_route() {
+    let route = use_route::<Route>();
+    let nav = use_navigator();
+    let pins = PinList(use_context::<Pins>().list.read().clone());
+    let library = use_context::<LibrarySignal>();
+    let mut last_detail = use_context::<LastDetail>().0;
+    let mut search_input = use_context::<SearchInput>().0;
+    use_effect(use_reactive!(|route, pins| {
+        if route.view() == Some(View::Pins) {
+            let address = Route::Pins { pins };
+            if route != address {
+                nav.replace(address);
+            }
+        }
+    }));
+    use_effect(use_reactive!(|route| {
+        match &route {
+            Route::Search { query } if *search_input.peek() != query.0 => search_input.set(query.0.clone()),
+            Route::EntityDetail { .. } | Route::Book { .. } => {
+                let detail = shown_detail(&route, library.peek().as_deref());
+                if *last_detail.peek() != detail {
+                    last_detail.set(detail);
+                }
+            }
+            _ => {}
+        }
+    }));
 }
 
 #[component]
 pub fn RootLayout() -> Element {
     crate::viewport::provide_viewport();
-    crate::pins::mirror_in_url(use_context::<crate::pins::PinsSignal>());
+    follow_route();
 
     rsx! {
         div { class: "min-h-screen bg-white",
@@ -65,26 +102,28 @@ pub fn RootLayout() -> Element {
 #[component]
 fn SearchHeader() -> Element {
     let mut search_input = use_context::<SearchInput>().0;
-    let mut search_query = use_context::<SearchQuery>().0;
     let update_available = use_context::<Signal<UpdateAvailable>>();
     let resync = use_context::<ResyncRequest>();
-    let library = use_context::<LibrarySignal>();
+    let pins = use_context::<Pins>();
+    let last_detail = use_context::<LastDetail>().0;
     let mut filters_open = use_signal(|| false);
     let nav = use_navigator();
     let router = router();
     let view = use_route::<Route>().view();
     // The view the search results were opened from, which ESC returns to.
     let mut came_from = use_signal(|| View::Pins);
-    // Switches to `target`, which carries the detail view's entity along.
     let mut show = move |target: View| {
         let route = router.current::<Route>();
         if target == View::Results && route.view() != Some(View::Results) {
             came_from.set(route.view().unwrap_or(View::Pins));
         }
-        nav.push(Route::of_view(
-            target,
-            current_detail(&route, library.read().as_deref()),
-        ));
+        nav.push(match target {
+            View::Results => Route::search(&search_input.peek()),
+            View::Pins => Route::Pins {
+                pins: PinList(pins.list.peek().clone()),
+            },
+            View::Detail => Route::detail_of(last_detail.peek().clone()),
+        });
     };
     // Bumped on every keystroke so a pending debounce task can tell it's
     // been superseded and skip committing its now-stale value.
@@ -119,7 +158,6 @@ fn SearchHeader() -> Element {
     // from.
     let mut clear = move || {
         search_input.set(String::new());
-        search_query.set(String::new());
         debounce_generation.set(debounce_generation() + 1);
         if view == Some(View::Results) {
             show(came_from());
@@ -183,13 +221,16 @@ fn SearchHeader() -> Element {
                                 search_input.set(value.clone());
                                 if view != Some(View::Results) {
                                     show(View::Results);
+                                    return;
                                 }
                                 let generation = debounce_generation() + 1;
                                 debounce_generation.set(generation);
+                                // The results follow the query in the address.
                                 spawn(async move {
                                     gloo_timers::future::TimeoutFuture::new(SEARCH_DEBOUNCE_MS).await;
-                                    if debounce_generation() == generation {
-                                        search_query.set(value);
+                                    let showing_results = router.current::<Route>().view() == Some(View::Results);
+                                    if debounce_generation() == generation && showing_results {
+                                        nav.replace(Route::search(&value));
                                     }
                                 });
                             },
