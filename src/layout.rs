@@ -104,12 +104,18 @@ fn SearchHeader() -> Element {
     let mut search_input = use_context::<SearchInput>().0;
     let update_available = use_context::<Signal<UpdateAvailable>>();
     let resync = use_context::<ResyncRequest>();
-    let pins = use_context::<Pins>();
+    let mut pins = use_context::<Pins>();
     let last_detail = use_context::<LastDetail>().0;
     let mut filters_open = use_signal(|| false);
     let nav = use_navigator();
     let router = router();
     let view = use_route::<Route>().view();
+    // The filter menu belongs to the search results and closes with them.
+    use_effect(use_reactive!(|view| {
+        if view != Some(View::Results) && *filters_open.peek() {
+            filters_open.set(false);
+        }
+    }));
     // The view the search results were opened from, which ESC returns to.
     let mut came_from = use_signal(|| View::Pins);
     let mut show = move |target: View| {
@@ -274,23 +280,49 @@ fn SearchHeader() -> Element {
                             }
                         }
                     }
-                    button {
-                        class: "h-9 w-9 shrink-0 rounded-full border border-gray-300 text-lg leading-none hover:border-gray-400 {dots_state}",
-                        title: "Filters",
-                        aria_label: "Filters",
-                        aria_expanded: filters_open(),
-                        onclick: move |_| filters_open.set(!filters_open()),
-                        "⋮"
+                    match view {
+                        Some(View::Results) => rsx! {
+                            button {
+                                class: "h-9 w-9 shrink-0 rounded-full border border-gray-300 text-lg leading-none hover:border-gray-400 {dots_state}",
+                                title: "Filters",
+                                aria_label: "Filters",
+                                aria_expanded: filters_open(),
+                                onclick: move |_| filters_open.set(!filters_open()),
+                                "⋮"
+                            }
+                        },
+                        Some(View::Pins) => rsx! {
+                            button {
+                                class: "h-9 w-9 shrink-0 rounded-full border border-gray-300 bg-white text-base leading-none text-gray-600 hover:border-gray-400 disabled:text-gray-300 disabled:hover:border-gray-300",
+                                title: "Unpin everything",
+                                aria_label: "Unpin everything",
+                                disabled: pins.list.read().is_empty(),
+                                onclick: move |_| async move {
+                                    let confirmed = document::eval("return confirm('Unpin every entity?')")
+                                        .join::<bool>()
+                                        .await
+                                        .unwrap_or(false);
+                                    if confirmed {
+                                        pins.set(Vec::new());
+                                    }
+                                },
+                                svg {
+                                    class: "mx-auto h-4 w-4",
+                                    view_box: "0 0 24 24",
+                                    fill: "none",
+                                    stroke: "currentColor",
+                                    stroke_width: "1.75",
+                                    stroke_linecap: "round",
+                                    stroke_linejoin: "round",
+                                    path { d: "M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" }
+                                }
+                            }
+                        },
+                        _ => rsx! {},
                     }
                 }
                 if filters_open() {
-                    FilterPanel {
-                        on_change: move |_| {
-                            if view != Some(View::Results) {
-                                show(View::Results);
-                            }
-                        },
-                    }
+                    FilterPanel {}
                 }
             }
             if update_available().0 {
@@ -311,7 +343,7 @@ fn SearchHeader() -> Element {
 /// switches the core rulebooks), and the kind-specific filters, each of
 /// which restricts the results to its own kind.
 #[component]
-fn FilterPanel(on_change: EventHandler<()>) -> Element {
+fn FilterPanel() -> Element {
     let library = use_context::<LibrarySignal>();
     let mut rules = use_context::<Signal<Use2024Rules>>();
     let mut filters = use_context::<Signal<Filters>>();
@@ -344,7 +376,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
             RangeSlider {
                 scale,
                 steps: lib.search_index.scale_steps(scale).to_vec(),
-                on_change,
             }
         }
     };
@@ -371,7 +402,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                     },
                     on_toggle: move |i: usize| {
                         filters.write().toggle_facet(facet, &values[i]);
-                        on_change.call(());
                     },
                     ListAction {
                         label: "clear",
@@ -379,7 +409,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                         disabled: !current.facet_set(facet),
                         onclick: move |_| {
                             filters.write().clear_facet(facet);
-                            on_change.call(());
                         },
                     }
                 }
@@ -402,7 +431,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                             on_toggle: move |i: usize| {
                                 if let Some(kind) = EntityKind::all().nth(i) {
                                     filters.write().toggle_kind(kind);
-                                    on_change.call(());
                                 }
                             },
                             for (shown, label) in [(true, "all"), (false, "none")] {
@@ -411,7 +439,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                                     label,
                                     onclick: move |_| {
                                         filters.write().set_all_kinds(shown);
-                                        on_change.call(());
                                     },
                                 }
                             }
@@ -424,7 +451,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                                 let lib = lib.clone();
                                 move |i: usize| {
                                     filters.write().toggle_source(&lib.search_index.sources[i]);
-                                    on_change.call(());
                                 }
                             },
                             for (shown, label) in [(true, "all"), (false, "none")] {
@@ -435,7 +461,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                                         let lib = lib.clone();
                                         move |_| {
                                             filters.write().set_all_sources(shown, &lib.search_index.sources);
-                                            on_change.call(());
                                         }
                                     },
                                 }
@@ -449,7 +474,6 @@ fn FilterPanel(on_change: EventHandler<()>) -> Element {
                                     onclick: move |_| {
                                         rules.set(Use2024Rules(use_2024));
                                         filters.write().set_ruleset(use_2024);
-                                        on_change.call(());
                                     },
                                 }
                             }
@@ -641,7 +665,7 @@ fn MultiSelect(
 /// draggable thumb for the lowest and one for the highest shown. A thumb at
 /// its end of the scale leaves that end of the range open.
 #[component]
-fn RangeSlider(scale: Scale, steps: Vec<(Box<str>, f64)>, on_change: EventHandler<()>) -> Element {
+fn RangeSlider(scale: Scale, steps: Vec<(Box<str>, f64)>) -> Element {
     let mut filters = use_context::<Signal<Filters>>();
     let Some(last) = steps.len().checked_sub(1).filter(|last| *last > 0) else {
         return rsx! {};
@@ -678,7 +702,6 @@ fn RangeSlider(scale: Scale, steps: Vec<(Box<str>, f64)>, on_change: EventHandle
             filters.write().set_range_bound(scale, is_max, bound);
             // The input may have been dragged past the other thumb; put it back.
             document::eval(&format!("document.getElementById('{}').value = {i}", id(is_max)));
-            on_change.call(());
         }
     };
     let label = scale.label().to_lowercase();
@@ -726,7 +749,6 @@ fn RangeSlider(scale: Scale, steps: Vec<(Box<str>, f64)>, on_change: EventHandle
                     disabled: is_open,
                     onclick: move |_| {
                         filters.write().clear_range(scale);
-                        on_change.call(());
                     },
                 }
             }
