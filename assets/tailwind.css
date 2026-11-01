@@ -443,6 +443,9 @@
   .max-h-\[70vh\] {
     max-height: 70vh;
   }
+  .max-h-\[calc\(100dvh-1\.25rem\)\] {
+    max-height: calc(100dvh - 1.25rem);
+  }
   .min-h-0 {
     min-height: calc(var(--spacing) * 0);
   }

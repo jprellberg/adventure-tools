@@ -203,7 +203,8 @@ fn SearchHeader() -> Element {
         "bg-white/95 backdrop-blur"
     };
     let card_state = if filters_open() {
-        "border-gray-300 bg-white"
+        // The filter area reaches down to the bottom of the viewport.
+        "flex max-h-[calc(100dvh-1.25rem)] flex-col border-gray-300 bg-white"
     } else {
         "border-transparent"
     };
@@ -239,6 +240,11 @@ fn SearchHeader() -> Element {
                             value: "{search_input}",
                             id: "search-input",
                             autofocus: true,
+                            onclick: move |_| {
+                                if view != Some(View::Results) {
+                                    show(View::Results);
+                                }
+                            },
                             oninput: move |evt| {
                                 let value = evt.value();
                                 search_input.set(value.clone());
@@ -417,7 +423,7 @@ fn FilterPanel() -> Element {
     };
 
     rsx! {
-        div { class: "mt-1.5 max-h-[70vh] space-y-3 overflow-y-auto border-t border-gray-200 px-1 pb-1 pt-2.5",
+        div { class: "mt-1.5 min-h-0 flex-1 space-y-3 overflow-y-auto border-t border-gray-200 px-1 pb-1 pt-2.5",
             if let Some(warning) = filter_warning(&current) {
                 p { class: "rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800",
                     "⚠ {warning}"

@@ -359,10 +359,10 @@ fn item_property_link(args: &[String], ctx: RenderCtx) -> Element {
     }
 }
 
-/// Hovering floats a preview above every card (see
+/// Hovering with a mouse floats a preview above every card (see
 /// `layout::HoverPopupOverlay`) unless the link points back at the entity
-/// whose card is currently being rendered (`ctx.current`). A click opens
-/// the target in the detail view.
+/// whose card is currently being rendered (`ctx.current`). A click, or a tap
+/// (which shows no preview), opens the target in the detail view.
 fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ctx: RenderCtx) -> Element {
     if name.is_empty() {
         return rsx! {};
@@ -383,17 +383,18 @@ fn link_to(kind: EntityKind, name: &str, source: Option<&str>, display: &str, ct
     let to = crate::routes::Route::detail_of(Some(target.clone()));
 
     let mut hover = ctx.hover.0;
-    let onmouseenter = move |evt: MouseEvent| {
-        if is_self {
+    let onpointerenter = move |evt: PointerEvent| {
+        // A preview opened by a touch would swallow the tap that follows it.
+        if is_self || evt.pointer_type() != "mouse" {
             return;
         }
         let c = evt.client_coordinates();
         hover.set(Some((target.clone(), c.x, c.y)));
     };
-    let onmouseleave = move |_| hover.set(None);
+    let onpointerleave = move |_| hover.set(None);
 
     rsx! {
-        span { onmouseenter, onmouseleave,
+        span { onpointerenter, onpointerleave,
             Link {
                 class: "cursor-pointer text-blue-700 underline decoration-dotted underline-offset-2 hover:decoration-solid",
                 to,
